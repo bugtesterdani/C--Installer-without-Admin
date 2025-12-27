@@ -34,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-docs
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -51,12 +53,19 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           set -e
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.wiki.git" wiki
-          rm -rf wiki/*
-          cp -a docs-html/* wiki/
-          cd wiki
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .
-          git commit -m "Update docs for ${TAG_NAME}" || echo "No changes to commit"
-          git push origin HEAD
+
+          wiki_repo="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.wiki.git"
+
+          if git ls-remote "${wiki_repo}" >/dev/null 2>&1; then
+            git clone "${wiki_repo}" wiki
+            rm -rf wiki/*
+            cp -a docs-html/* wiki/
+            cd wiki
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .
+            git commit -m "Update docs for ${TAG_NAME}" || echo "No changes to commit"
+            git push origin HEAD
+          else
+            echo "Wiki repository not available for ${REPO}; skipping publish."
+          fi
