@@ -11,6 +11,10 @@ on:
         required: false
         default: "Release"
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   build-msix:
     runs-on: windows-latest
@@ -19,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v2
@@ -28,35 +34,52 @@ jobs:
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
+        with:
+          vs-version: latest
 
       - name: Build MSIX bundle
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+
           $packageDir = Join-Path $env:RUNNER_TEMP "msix"
-          New-Item -ItemType Directory -Force -Path "$packageDir" | Out-Null
+          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+
+          Write-Host "Using configuration: $($env:CONFIGURATION)"
+          Write-Host "Package output directory: $packageDir"
+
           msbuild "MSIX Installer/MSIX Installer.wapproj" `
             /p:Configuration=$env:CONFIGURATION `
             /p:AppxBundle=Always `
-            /p:AppxBundlePlatforms="x86|x64|ARM64" `
+            /p:AppxBundlePlatforms="x86;x64;ARM64" `
             /p:UapAppxPackageBuildMode=StoreUpload `
             /p:GenerateAppInstallerFile=false `
             /p:AppxPackageDir="$packageDir" `
             /p:AppxPackageSigningEnabled=false
-          echo "PACKAGE_DIR=$packageDir" >> $env:GITHUB_ENV
+
+          "PACKAGE_DIR=$packageDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Locate bundle
         id: find_bundle
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $packageDir = $env:PACKAGE_DIR
-          if (-not $packageDir) { $packageDir = Join-Path $env:RUNNER_TEMP "msix" }
-          $bundle = Get-ChildItem -Path "$packageDir" -Filter *.msixbundle -Recurse | Select-Object -First 1
+          if (-not $packageDir) {
+            Write-Host "PACKAGE_DIR not set; falling back to RUNNER_TEMP\msix"
+            $packageDir = Join-Path $env:RUNNER_TEMP "msix"
+          }
+
+          Write-Host "Searching for .msixbundle under: $packageDir"
+          $bundle = Get-ChildItem -Path $packageDir -Filter *.msixbundle -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+
           if (-not $bundle) {
-            Write-Error "Keine .msixbundle gefunden."
+            Write-Error "Keine .msixbundle gefunden unter $packageDir."
             exit 1
           }
-          echo "bundle_path=$($bundle.FullName)" >> $env:GITHUB_OUTPUT
-          echo "Bundle: $($bundle.FullName)"
+
+          "bundle_path=$($bundle.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Found bundle: $($bundle.FullName)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -64,7 +87,7 @@ jobs:
           name: msixbundle
           path: ${{ steps.find_bundle.outputs.bundle_path }}
 
-      - name: Release asset
+      - name: Create release and upload asset
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
