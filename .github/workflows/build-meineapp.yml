@@ -2,6 +2,8 @@ name: Build MeineApp Update Package
 
 on:
   push:
+    branches:
+      - '**'        # runs on any branch push
     tags:
       - "v*"
   workflow_dispatch:
