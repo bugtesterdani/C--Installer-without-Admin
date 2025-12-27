@@ -7,6 +7,10 @@ on:
     tags:
       - '*'
 
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
+
 jobs:
   build-docs:
     name: Generate Doxygen HTML
@@ -29,43 +33,33 @@ jobs:
           name: docs-html
           path: docs/html
 
-  publish-wiki:
-    name: Publish HTML to Wiki on tag
+  deploy-pages:
+    name: Deploy docs to GitHub Pages on tag
     runs-on: ubuntu-latest
     needs: build-docs
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
-      contents: write
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Download HTML artifact
         uses: actions/download-artifact@v4
         with:
           name: docs-html
           path: docs-html
 
-      - name: Push to wiki
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          TAG_NAME: ${{ github.ref_name }}
-        run: |
-          set -e
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
 
-          wiki_repo="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.wiki.git"
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-html
 
-          if git ls-remote "${wiki_repo}" >/dev/null 2>&1; then
-            git clone "${wiki_repo}" wiki
-            rm -rf wiki/*
-            cp -a docs-html/* wiki/
-            cd wiki
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add .
-            git commit -m "Update docs for ${TAG_NAME}" || echo "No changes to commit"
-            git push origin HEAD
-          else
-            echo "Wiki repository not available for ${REPO}; skipping publish."
-          fi
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
