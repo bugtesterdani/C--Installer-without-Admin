@@ -17,7 +17,7 @@ namespace Launcher_WPF
             Path.Combine(BasePath, "B");
 
         public static string UpdateInfoUrl =>
-            "http://localhost:8000/update.json";
+            "https://github.com/bugtesterdani/C--Installer-without-Admin/releases/latest/download/update.json";
 
         public static string TempZip =>
             Path.Combine(Path.GetTempPath(), "MeineApp_Update.zip");

@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
 
-UPDATE_JSON_URL = "http://localhost:8000/update.json"
+UPDATE_JSON_URL = "https://github.com/bugtesterdani/C--Installer-without-Admin/releases/latest/download/update.json"
 PRIVATE_KEY_PATH = "private.pem"
 OUTPUT_MANIFEST = "manifest.json"
 
