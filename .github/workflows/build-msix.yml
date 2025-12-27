@@ -53,7 +53,7 @@ jobs:
           msbuild "MSIX Installer/MSIX Installer.wapproj" `
             /p:Configuration=$env:CONFIGURATION `
             /p:AppxBundle=Always `
-            /p:AppxBundlePlatforms="x86;x64;ARM64" `
+            /p:AppxBundlePlatforms="x86|x64|ARM64" `
             /p:UapAppxPackageBuildMode=StoreUpload `
             /p:GenerateAppInstallerFile=false `
             /p:AppxPackageDir="$packageDir" `
