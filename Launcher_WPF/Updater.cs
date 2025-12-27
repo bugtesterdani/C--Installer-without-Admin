@@ -6,6 +6,8 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Diagnostics;
+using System.Reflection;
 
 namespace Launcher_WPF
 {
