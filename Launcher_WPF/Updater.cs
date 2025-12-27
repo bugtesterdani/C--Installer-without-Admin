@@ -153,10 +153,13 @@ namespace Launcher_WPF
         /// </summary>
         private static string ReadLocalVersion(string targetDir)
         {
-            string versionFile = Path.Combine(targetDir, "version.txt");
-            return File.Exists(versionFile)
-                ? File.ReadAllText(versionFile).Trim()
-                : "0.0.0";
+            string dllPath = Path.Combine(targetDir, "MeineApp.dll");
+
+            if (!File.Exists(dllPath))
+                return "0.0.0";
+
+            var info = FileVersionInfo.GetVersionInfo(dllPath);
+            return info.FileVersion ?? "0.0.0";
         }
 
         /// <summary>
@@ -172,8 +175,6 @@ namespace Launcher_WPF
 
             Directory.CreateDirectory(targetDir);
             ZipFile.ExtractToDirectory(AppConfig.TempZip, targetDir);
-
-            File.WriteAllText(Path.Combine(targetDir, "version.txt"), info.Version);
 
             Console.WriteLine($"Version {_inactive} aktualisiert.");
         }
