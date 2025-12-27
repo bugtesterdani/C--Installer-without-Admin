@@ -39,6 +39,66 @@ jobs:
         with:
           vs-version: latest
 
+      - name: Prepare signing certificate
+        id: signing
+        shell: pwsh
+        env:
+          SIGNING_CERTIFICATE_BASE64: ${{ secrets.MSIX_SIGNING_CERTIFICATE_BASE64 }}
+          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MSIX_SIGNING_CERTIFICATE_PASSWORD }}
+          DEFAULT_PFX_BASE64_PATH: ${{ github.workspace }}/certificates/msix_signing.pfx.b64
+          DEFAULT_CER_BASE64_PATH: ${{ github.workspace }}/certificates/msix_signing.cer.b64
+          DEFAULT_PFX_PASSWORD: msix-dev-password
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP "signing_cert.pfx"
+          $cerPath = Join-Path $env:RUNNER_TEMP "signing_cert.cer"
+          $password = $env:SIGNING_CERTIFICATE_PASSWORD
+          $securePassword = $null
+
+          if ($env:SIGNING_CERTIFICATE_BASE64) {
+            Write-Host "Using signing certificate from secret."
+            if (-not $password) {
+              Write-Error "SIGNING_CERTIFICATE_PASSWORD secret is required when providing SIGNING_CERTIFICATE_BASE64."
+              exit 1
+            }
+
+            $bytes = [Convert]::FromBase64String($env:SIGNING_CERTIFICATE_BASE64)
+            [IO.File]::WriteAllBytes($pfxPath, $bytes)
+            $securePassword = ConvertTo-SecureString -String $password -Force -AsPlainText
+            $imported = Import-PfxCertificate -FilePath $pfxPath -Password $securePassword -CertStoreLocation Cert:\CurrentUser\My
+            Export-Certificate -Cert $imported -FilePath $cerPath | Out-Null
+          }
+          elseif (Test-Path $env:DEFAULT_PFX_BASE64_PATH) {
+            Write-Host "Using repository signing certificate from $($env:DEFAULT_PFX_BASE64_PATH)."
+            $base64 = Get-Content -Path $env:DEFAULT_PFX_BASE64_PATH -Raw
+            $bytes = [Convert]::FromBase64String($base64)
+            [IO.File]::WriteAllBytes($pfxPath, $bytes)
+            $password = $env:DEFAULT_PFX_PASSWORD
+            $securePassword = ConvertTo-SecureString -String $password -Force -AsPlainText
+            $imported = Import-PfxCertificate -FilePath $pfxPath -Password $securePassword -CertStoreLocation Cert:\CurrentUser\My
+            if (Test-Path $env:DEFAULT_CER_BASE64_PATH) {
+              $cerBase64 = Get-Content -Path $env:DEFAULT_CER_BASE64_PATH -Raw
+              $cerBytes = [Convert]::FromBase64String($cerBase64)
+              [IO.File]::WriteAllBytes($cerPath, $cerBytes)
+            }
+            else {
+              Export-Certificate -Cert $imported -FilePath $cerPath | Out-Null
+            }
+          }
+          else {
+            Write-Host "No signing certificate secret provided. Generating a temporary self-signed certificate."
+            $password = [Guid]::NewGuid().ToString("N")
+            $securePassword = ConvertTo-SecureString -String $password -Force -AsPlainText
+            $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=MSIX Installer" -CertStoreLocation Cert:\CurrentUser\My
+            Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $securePassword | Out-Null
+            Export-Certificate -Cert $cert -FilePath $cerPath | Out-Null
+          }
+
+          "signing_pfx_path=$pfxPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "signing_pfx_password=$password" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "signing_cer_path=$cerPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Build MSIX bundle
         shell: pwsh
         run: |
@@ -57,7 +117,9 @@ jobs:
             /p:UapAppxPackageBuildMode=StoreUpload `
             /p:GenerateAppInstallerFile=false `
             /p:AppxPackageDir="$packageDir" `
-            /p:AppxPackageSigningEnabled=false
+            /p:AppxPackageSigningEnabled=true `
+            /p:PackageCertificateKeyFile="$env:signing_pfx_path" `
+            /p:PackageCertificatePassword="$env:signing_pfx_password"
 
           "PACKAGE_DIR=$packageDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
@@ -91,8 +153,17 @@ jobs:
           name: msixbundle
           path: ${{ steps.find_bundle.outputs.bundle_path }}
 
+      - name: Upload signing certificate (.cer)
+        if: env.signing_cer_path
+        uses: actions/upload-artifact@v4
+        with:
+          name: signing-certificate
+          path: ${{ env.signing_cer_path }}
+
       - name: Create release and upload asset
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ steps.find_bundle.outputs.bundle_path }}
+          files: |
+            ${{ steps.find_bundle.outputs.bundle_path }}
+            ${{ env.signing_cer_path }}
