@@ -16,7 +16,6 @@ jobs:
     runs-on: windows-latest
     env:
       CONFIGURATION: ${{ github.event.inputs.configuration || 'Release' }}
-      PACKAGE_DIR: ${{ runner.temp }}\msix\
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,21 +32,25 @@ jobs:
       - name: Build MSIX bundle
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path "$env:PACKAGE_DIR" | Out-Null
+          $packageDir = Join-Path $env:RUNNER_TEMP "msix"
+          New-Item -ItemType Directory -Force -Path "$packageDir" | Out-Null
           msbuild "MSIX Installer/MSIX Installer.wapproj" `
             /p:Configuration=$env:CONFIGURATION `
             /p:AppxBundle=Always `
             /p:AppxBundlePlatforms="x86|x64|ARM64" `
             /p:UapAppxPackageBuildMode=StoreUpload `
             /p:GenerateAppInstallerFile=false `
-            /p:AppxPackageDir="$env:PACKAGE_DIR" `
+            /p:AppxPackageDir="$packageDir" `
             /p:AppxPackageSigningEnabled=false
+          echo "PACKAGE_DIR=$packageDir" >> $env:GITHUB_ENV
 
       - name: Locate bundle
         id: find_bundle
         shell: pwsh
         run: |
-          $bundle = Get-ChildItem -Path "$env:PACKAGE_DIR" -Filter *.msixbundle -Recurse | Select-Object -First 1
+          $packageDir = $env:PACKAGE_DIR
+          if (-not $packageDir) { $packageDir = Join-Path $env:RUNNER_TEMP "msix" }
+          $bundle = Get-ChildItem -Path "$packageDir" -Filter *.msixbundle -Recurse | Select-Object -First 1
           if (-not $bundle) {
             Write-Error "Keine .msixbundle gefunden."
             exit 1
