@@ -149,17 +149,20 @@ namespace Launcher_WPF
         }
 
         /// <summary>
-        /// Liest die lokale Version aus version.txt oder liefert "0.0.0", falls nicht vorhanden.
+        /// Liest die lokal installierte Version der Anwendung aus der Assembly-Datei im angegebenen Verzeichnis.
+        /// Gibt "0.0.0.0" zurück, falls die DLL nicht existiert oder keine FileVersion vorhanden ist.
         /// </summary>
+        /// <param name="targetDir">Das Verzeichnis, in dem sich die Anwendungs-Assembly befindet.</param>
+        /// <returns>Versions-String (z. B. "1.2.3.4") oder "0.0.0.0", wenn keine Version gefunden wurde.</returns>
         private static string ReadLocalVersion(string targetDir)
         {
             string dllPath = Path.Combine(targetDir, "MeineApp.dll");
 
             if (!File.Exists(dllPath))
-                return "0.0.0";
+                return "0.0.0.0";
 
             var info = FileVersionInfo.GetVersionInfo(dllPath);
-            return info.FileVersion ?? "0.0.0";
+            return info.FileVersion ?? "0.0.0.0";
         }
 
         /// <summary>
