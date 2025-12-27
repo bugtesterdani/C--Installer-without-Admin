@@ -103,6 +103,9 @@ jobs:
             -c $env:CONFIGURATION `
             -r $env:RUNTIME_IDENTIFIER `
             --self-contained false `
+            -p:Version=${{ steps.versioning.outputs.version }} `
+            -p:AssemblyVersion=${{ steps.versioning.outputs.version }} `
+            -p:FileVersion=${{ steps.versioning.outputs.version }} `
             -o "${{ steps.paths.outputs.publish_dir }}"
 
       - name: Generate signed manifest
