@@ -1,7 +1,6 @@
 # Doxygen configuration generated for MeineApp Launcher docs
 
-@INCLUDE             =
-@INCLUDE_PATH        =
+INCLUDE_PATH        =
 
 PROJECT_NAME         = "MeineApp Launcher"
 PROJECT_NUMBER       =
@@ -35,9 +34,7 @@ WARN_IF_UNDOCUMENTED = YES
 
 GENERATE_HTML        = YES
 HTML_OUTPUT          = html
-GENERATE_LATEX       = YES
-LATEX_OUTPUT         = latex
-LATEX_BATCHFILE      = make.bat
+GENERATE_LATEX       = NO
 
 GENERATE_TREEVIEW    = YES
 FULL_PATH_NAMES      = NO
