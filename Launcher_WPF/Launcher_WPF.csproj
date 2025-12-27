@@ -9,14 +9,4 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 
-  <ItemGroup>
-    <None Remove="public.pem" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="public.pem">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
 </Project>
