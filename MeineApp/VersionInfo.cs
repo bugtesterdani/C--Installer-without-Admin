@@ -20,13 +20,22 @@ namespace MeineApp
 
         public static string GetVersion()
         {
-            string versionFile = Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory,
-                "version.txt");
-
-            return File.Exists(versionFile)
-                ? File.ReadAllText(versionFile).Trim()
-                : "0.0.0";
+            Assembly entryAssembly = Assembly.GetEntryAssembly();  
+            if (entryAssembly != null)
+            {
+                // Get the path to the entry assembly (e.g., "C:\Program Files\MyApp\MyApp.exe")
+                string exePath = entryAssembly.Location;
+                
+                // Read version info from the executable file
+                FileVersionInfo fileVersionInfo = FileVersionInfo.GetVersionInfo(exePath);
+                string fileVersion = fileVersionInfo.FileVersion;
+                Console.WriteLine($"File Version: {fileVersion}"); // Output: "1.0.0.0"
+                return fileVersion;
+            }
+            else
+            {
+                return "0.0.0.0";
+            }
         }
     }
 }
