@@ -79,6 +79,15 @@ jobs:
             }
           }
 
+          # Stelle sicher, dass Version 4-stellig ist
+          $parts = $version.Split('.')
+          while ($parts.Count -lt 4)
+          {
+            $parts += "0"
+          }
+          $version = ($parts -join '.')
+
+
           $tag = "v$version"
           $assetName = "meineapp_$version.zip"
           $releaseUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/$assetName"
