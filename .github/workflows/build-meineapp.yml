@@ -1,0 +1,147 @@
+name: Build MeineApp Update Package
+
+on:
+  push:
+    branches:
+      - '**'        # runs on any branch push
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version for manifest/update.json (omit leading v)"
+        required: false
+      configuration:
+        description: "Build configuration"
+        required: false
+        default: "Release"
+      runtime:
+        description: "Runtime identifier for dotnet publish"
+        required: false
+        default: "win-x64"
+
+permissions:
+  contents: write
+
+jobs:
+  build-meineapp:
+    runs-on: windows-latest
+    env:
+      CONFIGURATION: ${{ github.event.inputs.configuration || 'Release' }}
+      RUNTIME_IDENTIFIER: ${{ github.event.inputs.runtime || 'win-x64' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install cryptography requests
+
+      - name: Prepare paths
+        id: paths
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP "publish"
+          $artifactDir = Join-Path $env:RUNNER_TEMP "artifacts"
+
+          New-Item -ItemType Directory -Force -Path $publishDir,$artifactDir | Out-Null
+
+          "publish_dir=$publishDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "artifact_dir=$artifactDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Resolve version and release metadata
+        id: versioning
+        shell: pwsh
+        env:
+          VERSION_INPUT: ${{ github.event.inputs.version }}
+        run: |
+          $version = $env:VERSION_INPUT
+
+          if (-not $version) {
+            if ("${{ github.ref }}".StartsWith("refs/tags/")) {
+              $version = "${{ github.ref_name }}".TrimStart("v")
+            }
+            else {
+              $version = "0.0.0-${{ github.run_number }}"
+            }
+          }
+
+          $tag = "v$version"
+          $assetName = "meineapp_$version.zip"
+          $releaseUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/$assetName"
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "asset_name=$assetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "release_url=$releaseUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Restore and publish MeineApp
+        run: |
+          dotnet publish MeineApp/MeineApp.csproj `
+            -c $env:CONFIGURATION `
+            -r $env:RUNTIME_IDENTIFIER `
+            --self-contained false `
+            -o "${{ steps.paths.outputs.publish_dir }}"
+
+      - name: Generate signed manifest
+        run: |
+          python pythonsecret/create_manifest.py `
+            --payload-dir "${{ steps.paths.outputs.publish_dir }}" `
+            --version "${{ steps.versioning.outputs.version }}" `
+            --private-key pythonsecret/private.pem `
+            --output "${{ steps.paths.outputs.publish_dir }}/manifest.json"
+
+      - name: Package payload
+        id: package
+        shell: pwsh
+        run: |
+          $zipPath = Join-Path "${{ steps.paths.outputs.artifact_dir }}" "${{ steps.versioning.outputs.asset_name }}"
+          Compress-Archive -Path "${{ steps.paths.outputs.publish_dir }}\*" -DestinationPath $zipPath -Force
+
+          "zip_path=$zipPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Update pythonserver/update.json
+        id: updatejson
+        shell: pwsh
+        run: |
+          $updateJsonPath = Join-Path "${{ steps.paths.outputs.artifact_dir }}" "update.json"
+          $json = @{ Version = "${{ steps.versioning.outputs.version }}"; Url = "${{ steps.versioning.outputs.release_url }}" } | ConvertTo-Json
+
+          Set-Content -Path $updateJsonPath -Value $json -Encoding UTF8
+          Copy-Item -Path $updateJsonPath -Destination "${{ github.workspace }}\pythonserver\update.json" -Force
+
+          "update_json_path=$updateJsonPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: meineapp-update
+          path: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.paths.outputs.publish_dir }}/manifest.json
+            ${{ steps.updatejson.outputs.update_json_path }}
+
+      - name: Create GitHub release with assets
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.versioning.outputs.tag }}
+          name: MeineApp ${{ steps.versioning.outputs.version }}
+          files: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.updatejson.outputs.update_json_path }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
