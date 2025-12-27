@@ -4,15 +4,25 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
+/// <summary>
+/// Prüft ein Manifest auf gültige RSA-Signatur und Dateihashes.
+/// </summary>
 public class ManifestVerifier
 {
+    /// <summary>PEM-kodierter öffentlicher Schlüssel, der zur Verifikation genutzt wird.</summary>
     private readonly string _publicKeyPem;
 
+    /// <summary>
+    /// Erstellt einen Verifier mit dem angegebenen öffentlichen Schlüssel.
+    /// </summary>
     public ManifestVerifier(string publicKeyPem)
     {
         _publicKeyPem = publicKeyPem;
     }
 
+    /// <summary>
+    /// Validiert Manifest-Signatur und SHA-256-Hashes aller referenzierten Dateien.
+    /// </summary>
     public bool VerifyManifest(string manifestPath, string baseFolder)
     {
         var json = File.ReadAllText(manifestPath);
@@ -25,8 +35,6 @@ public class ManifestVerifier
         byte[] signature = Convert.FromBase64String(signatureBase64);
 
         // Manifest ohne Signatur neu erzeugen
-        // JSON ohne Signatur extrahieren
-
         var unsigned = new
         {
             version = root.GetProperty("version").GetString(),
@@ -82,6 +90,9 @@ public class ManifestVerifier
         return true;
     }
 
+    /// <summary>
+    /// Erzeugt kanonische JSON-Bytes, die identisch zu Python/canonical_json sind.
+    /// </summary>
     public static byte[] CanonicalJson(object obj)
     {
         // 1. Objekt in Dictionary umwandeln
@@ -103,6 +114,9 @@ public class ManifestVerifier
         return Encoding.UTF8.GetBytes(canonical);
     }
 
+    /// <summary>
+    /// Sortiert JSON-Elemente rekursiv und liefert eine strukturierte Darstellung mit stabiler Reihenfolge.
+    /// </summary>
     private static object SortElement(JsonElement element)
     {
         switch (element.ValueKind)
