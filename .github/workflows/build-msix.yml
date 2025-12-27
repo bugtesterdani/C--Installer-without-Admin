@@ -14,7 +14,7 @@ on:
         default: "Release"
 
 permissions:
-  contents: read
+  contents: write
   packages: read
 
 jobs:
@@ -80,8 +80,10 @@ jobs:
             exit 1
           }
 
-          "bundle_path=$($bundle.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          Write-Host "Found bundle: $($bundle.FullName)"
+          $bundlePosix = $bundle.FullName -replace '\\', '/'
+
+          "bundle_path=$bundlePosix" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Found bundle: $bundlePosix"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
