@@ -142,7 +142,7 @@ namespace Launcher_WPF
             var result = verifier.TryVerifyManifest(manifest, folder, out var failureReason);
             LastValidationError = result ? string.Empty : failureReason;
             if (!result)
-                Console.WriteLine($"Validierung fehlgeschlagen für {folder}: {failureReason}");
+                LastValidationError = $"Validierung fehlgeschlagen für {folder}: {failureReason}";
             return result;
         }
 
