@@ -5,9 +5,6 @@ using System.IO.Compression;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Diagnostics;
-using System.Reflection;
 
 namespace Launcher_WPF
 {
@@ -24,6 +21,10 @@ namespace Launcher_WPF
         private string _inactive;
         /// <summary>Rückgabecode des gestarteten Prozesses (falls verfügbar).</summary>
         public int retucode = -1;
+        /// <summary>Letzte Statusmeldung für die UI.</summary>
+        public string StatusMessage { get; private set; } = "Bereit.";
+        /// <summary>Letzte Fehlerursache bei der Manifest-Validierung.</summary>
+        public string LastValidationError { get; private set; } = string.Empty;
 
         public void CreateDirectories()
         {
@@ -84,17 +85,20 @@ namespace Launcher_WPF
             string inactiveDir = _inactive == "A" ? AppConfig.VersionA : AppConfig.VersionB;
 
             Console.WriteLine($"Prüfe Updates für Version {_active}...");
+            StatusMessage = $"Prüfe Updates für Version {_active}...";
 
             var info = await FetchUpdateInfoAsync();
             if (info == null)
             {
                 Console.WriteLine("Konnte Update-Informationen nicht laden.");
+                StatusMessage = "Update-Informationen konnten nicht geladen werden.";
                 return;
             }
 
             if (IsUpToDate(activeDir, info.Version))
             {
                 Console.WriteLine("Keine Updates für aktive Version.");
+                StatusMessage = "Aktive Version ist aktuell.";
                 return;
             }
 
@@ -103,14 +107,17 @@ namespace Launcher_WPF
             if (IsUpToDate(inactiveDir, info.Version))
             {
                 Console.WriteLine("Keine Updates für inaktive Version.");
+                StatusMessage = "Inaktive Version ist bereits aktuell.";
                 return;
             }
 
             Console.WriteLine($"Update gefunden: {ReadLocalVersion(inactiveDir)} → {info.Version}");
+            StatusMessage = $"Update gefunden: {ReadLocalVersion(inactiveDir)} → {info.Version}";
 
             await DownloadAndInstallAsync(inactiveDir, info);
 
             File.WriteAllText(AppConfig.ActiveFile, _inactive);
+            StatusMessage = $"Version {_inactive} wurde auf {info.Version} aktualisiert und aktiviert.";
         }
 
         /// <summary>
@@ -118,16 +125,25 @@ namespace Launcher_WPF
         /// </summary>
         public bool ValidateVersion(string folder)
         {
+            LastValidationError = string.Empty;
             string manifest = Path.Combine(folder, "manifest.json");
 
             if (!File.Exists(manifest))
+            {
+                LastValidationError = $"Manifest nicht gefunden: {manifest}";
+                Console.WriteLine(LastValidationError);
                 return false;
+            }
 
             string publicKey = new publicpem().pem;
 
             var verifier = new ManifestVerifier(publicKey);
 
-            return verifier.VerifyManifest(manifest, folder);
+            var result = verifier.TryVerifyManifest(manifest, folder, out var failureReason);
+            LastValidationError = result ? string.Empty : failureReason;
+            if (!result)
+                Console.WriteLine($"Validierung fehlgeschlagen für {folder}: {failureReason}");
+            return result;
         }
 
         /// <summary>
@@ -138,6 +154,7 @@ namespace Launcher_WPF
             GetInactive();
 
             retucode = -5;
+            StatusMessage = $"Starte aktive Version {_active}...";
 
             string activeFolder = _active == "A" ? AppConfig.VersionA : AppConfig.VersionB;
             string inactiveFolder = _inactive == "A" ? AppConfig.VersionA : AppConfig.VersionB;
@@ -145,8 +162,19 @@ namespace Launcher_WPF
             Console.WriteLine($"Starte aktive Version {_active}...");
             // 1. Prüfen ob aktive Version gültig ist
             if (ValidateVersion(activeFolder))
+            {
                 if (TryStart(activeFolder))
+                {
+                    StatusMessage = $"Aktive Version {_active} beendet mit Code {retucode}.";
                     return true;
+                }
+
+                StatusMessage = $"Aktive Version {_active} konnte nicht gestartet werden.";
+            }
+            else
+            {
+                StatusMessage = $"Aktive Version {_active} ungültig ({LastValidationError}). Versuche Fallback.";
+            }
 
             Console.WriteLine("Aktive Version fehlerhaft! Fallback...");
             // 2. Fallback
@@ -154,10 +182,21 @@ namespace Launcher_WPF
             {
                 File.WriteAllText(AppConfig.ActiveFile, _inactive);
                 if (TryStart(inactiveFolder))
+                {
+                    StatusMessage = $"Fallback-Version {_inactive} beendet mit Code {retucode}.";
                     return true;
+                }
+
+                StatusMessage = $"Fallback-Version {_inactive} konnte nicht gestartet werden.";
+            }
+            else
+            {
+                StatusMessage = $"Fallback-Version {_inactive} ungültig ({LastValidationError}).";
             }
 
             Console.WriteLine("Beide Versionen beschädigt.");
+            retucode = -20;
+            StatusMessage = $"Keine gültige Version gefunden ({LastValidationError}). Installationsprogramm wird neu aufgebaut.";
             Directory.Delete(AppConfig.BasePath, true);
             Directory.CreateDirectory(AppConfig.BasePath);
             return false;
