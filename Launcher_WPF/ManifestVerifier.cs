@@ -62,13 +62,28 @@ public class ManifestVerifier
         }
 
         string signatureBase64 = sigElement.GetString();
-        byte[] signature = Convert.FromBase64String(signatureBase64);
+        byte[] signature;
+        try
+        {
+            signature = Convert.FromBase64String(signatureBase64);
+        }
+        catch (Exception ex)
+        {
+            failureReason = $"Signatur ist kein gültiges Base64: {ex.Message}";
+            return false;
+        }
 
         // Manifest ohne Signatur neu erzeugen
+        if (!root.TryGetProperty("files", out var filesElement) || filesElement.ValueKind != JsonValueKind.Object)
+        {
+            failureReason = "Dateiliste fehlt oder ist kein Objekt.";
+            return false;
+        }
+
         Dictionary<string, string> files;
         try
         {
-            files = root.GetProperty("files").Deserialize<Dictionary<string, string>>();
+            files = filesElement.Deserialize<Dictionary<string, string>>();
         }
         catch (Exception ex)
         {
@@ -78,9 +93,15 @@ public class ManifestVerifier
 
         var unsigned = new
         {
-            version = root.GetProperty("version").GetString(),
+            version = root.TryGetProperty("version", out var versionElement) ? versionElement.GetString() : null,
             files
         };
+
+        if (unsigned.version is null)
+        {
+            failureReason = "Versionsfeld fehlt oder ist leer.";
+            return false;
+        }
 
         byte[] unsignedBytes = CanonicalJson(unsigned);
 
@@ -162,7 +183,7 @@ public class ManifestVerifier
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-                var dict = new SortedDictionary<string, object>();
+                var dict = new SortedDictionary<string, object>(StringComparer.Ordinal);
                 foreach (var prop in element.EnumerateObject())
                     dict[prop.Name] = SortElement(prop.Value);
                 return dict;

@@ -31,23 +31,42 @@ public class ManifestVerifier
         var root = doc.RootElement;
 
         // Signatur extrahieren
-        string signatureBase64 = doc.RootElement.GetProperty("signature").GetString();
-        byte[] signature = Convert.FromBase64String(signatureBase64);
+        if (!root.TryGetProperty("signature", out var signatureElement))
+            return false;
+
+        string signatureBase64 = signatureElement.GetString();
+        byte[] signature;
+        try
+        {
+            signature = Convert.FromBase64String(signatureBase64);
+        }
+        catch
+        {
+            return false;
+        }
 
         // Manifest ohne Signatur neu erzeugen
+        if (!root.TryGetProperty("files", out var filesElement) || filesElement.ValueKind != JsonValueKind.Object)
+            return false;
+
+        Dictionary<string, string> files;
+        try
+        {
+            files = filesElement.Deserialize<Dictionary<string, string>>();
+        }
+        catch
+        {
+            return false;
+        }
+
         var unsigned = new
         {
-            version = root.GetProperty("version").GetString(),
-            files = root.GetProperty("files").Deserialize<Dictionary<string, string>>()
+            version = root.TryGetProperty("version", out var versionEl) ? versionEl.GetString() : null,
+            files
         };
 
-        // Python-kompatible Serialisierung
-        string unsignedJson = JsonSerializer.Serialize(unsigned, new JsonSerializerOptions
-        {
-            WriteIndented = false,
-            PropertyNamingPolicy = null, // KEIN CamelCase!
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-        });
+        if (unsigned.version is null)
+            return false;
 
         byte[] unsignedBytes = CanonicalJson(unsigned);
 
@@ -122,7 +141,7 @@ public class ManifestVerifier
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-                var dict = new SortedDictionary<string, object>();
+                var dict = new SortedDictionary<string, object>(StringComparer.Ordinal);
                 foreach (var prop in element.EnumerateObject())
                     dict[prop.Name] = SortElement(prop.Value);
                 return dict;
