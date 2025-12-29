@@ -15,8 +15,10 @@ import argparse
 import base64
 import hashlib
 import json
+import locale
+import sys
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 import zipfile
 
 from cryptography.exceptions import InvalidSignature
@@ -34,6 +36,29 @@ def canonical_json(obj) -> bytes:
         separators=(",", ":"),
         ensure_ascii=False,
     ).encode("utf-8")
+
+def enforce_german_locale() -> Optional[str]:
+    """
+    Force locale-sensitive validation steps to use a German locale, even on
+    systems configured for a different language. Returns the locale string that
+    could be activated or None if no German locale is available.
+    """
+    german_candidates = (
+        "de_DE.UTF-8",  # Linux common
+        "de_DE",        # Generic Unix fallback
+        "deu_deu",      # Windows legacy
+        "de-DE",
+        "German_Germany.1252",  # Windows code page
+    )
+
+    for candidate in german_candidates:
+        try:
+            locale.setlocale(locale.LC_ALL, candidate)
+            return candidate
+        except locale.Error:
+            continue
+
+    return None
 
 def normalize_relative_path(path: str) -> str:
     """
@@ -177,6 +202,12 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    german_locale = enforce_german_locale()
+    if german_locale:
+        print(f"Locale für Validierung gesetzt auf: {german_locale}", file=sys.stderr)
+    else:
+        print("Warnung: Keine deutsche Locale verfügbar, es wird die System-Locale verwendet.", file=sys.stderr)
 
     try:
         validate_payload(args.zip, args.manifest, args.public_key, args.fail_on_extra)

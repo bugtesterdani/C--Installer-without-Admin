@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 
@@ -8,6 +9,12 @@ namespace Launcher
     {
         static async Task Main(string[] args)
         {
+            var german = CultureInfo.GetCultureInfo("de-DE");
+            CultureInfo.CurrentCulture = german;
+            CultureInfo.CurrentUICulture = german;
+            CultureInfo.DefaultThreadCurrentCulture = german;
+            CultureInfo.DefaultThreadCurrentUICulture = german;
+
             var updater = new Updater();
 
             Console.WriteLine("=== MeineApp Launcher ===");
