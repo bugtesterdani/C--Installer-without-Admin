@@ -25,13 +25,32 @@ namespace Launcher_WPF
         /// <summary>Rückgabecode des gestarteten Prozesses (falls verfügbar).</summary>
         public int retucode;
 
+        public void CreateDirectories()
+        {
+            if (!Directory.Exists(Path.Combine(AppConfig.BasePath, "..")))
+                Directory.CreateDirectory(Path.Combine(AppConfig.BasePath, ".."));
+            if (!Directory.Exists(AppConfig.BasePath))
+                Directory.CreateDirectory(AppConfig.BasePath);
+        }
+
         /// <summary>
         /// Liest den aktiven Slot von der Festplatte (Standard "A", falls nicht vorhanden).
         /// </summary>
         public string GetActive()
         {
             if (!File.Exists(AppConfig.ActiveFile))
+            {
                 File.WriteAllText(AppConfig.ActiveFile, "A");
+                if (!Directory.Exists(Path.Combine(AppConfig.BasePath, "A")))
+                    Directory.CreateDirectory(Path.Combine(AppConfig.BasePath, "A"));
+                var info = await FetchUpdateInfoAsync();
+                if (info == null)
+                {
+                    Console.WriteLine("Konnte Update-Informationen nicht laden.");
+                    throw new Exception("Update-Infos nicht geladen.");
+                }
+                await DownloadAndInstallAsync(AppConfig.VersionA, info.Version);
+            }
 
             return File.ReadAllText(AppConfig.ActiveFile).Trim();
         }
