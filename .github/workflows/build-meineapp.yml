@@ -102,7 +102,7 @@ jobs:
           dotnet publish MeineApp/MeineApp.csproj `
             -c $env:CONFIGURATION `
             -r $env:RUNTIME_IDENTIFIER `
-            --self-contained false `
+            --self-contained true `
             -p:Version=${{ steps.versioning.outputs.version }} `
             -p:AssemblyVersion=${{ steps.versioning.outputs.version }} `
             -p:FileVersion=${{ steps.versioning.outputs.version }} `
