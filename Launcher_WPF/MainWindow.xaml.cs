@@ -17,9 +17,11 @@ namespace Launcher_WPF
     public partial class MainWindow : Window
     {
         private Updater update = new Updater();
+
         public MainWindow()
         {
             InitializeComponent();
+            update.CreateDirectories();
         }
 
         private void btnupdate(object sender, RoutedEventArgs e)
