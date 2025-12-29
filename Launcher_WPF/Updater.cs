@@ -219,10 +219,10 @@ namespace Launcher_WPF
         /// </summary>
         private bool TryStart(string exe)
         {
-            exe = Path.Combine(exe, "MeineApp.dll");
+            exe = Path.Combine(exe, "MeineApp.exe");
             try
             {
-                var psi = new ProcessStartInfo("dotnet", $"\"{exe}\"")
+                var psi = new ProcessStartInfo(exe)
                 {
                     UseShellExecute = false
                 };
