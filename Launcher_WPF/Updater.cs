@@ -33,9 +33,19 @@ namespace Launcher_WPF
                 Directory.CreateDirectory(AppConfig.BasePath);
         }
 
-        /// <summary>
-        /// Liest den aktiven Slot von der Festplatte (Standard "A", falls nicht vorhanden).
+        /// /// <summary>
+        /// Ermittelt die aktuell aktive Installationsversion (A oder B).
+        /// Falls noch keine aktive Version existiert, wird Version A initialisiert,
+        /// notwendige Verzeichnisse werden angelegt und das Update heruntergeladen
+        /// und installiert.
         /// </summary>
+        /// <returns>
+        /// Ein <see cref="Task{String}"/> mit dem Kennzeichen der aktiven Version
+        /// (z. B. "A" oder "B").
+        /// </returns>
+        /// <exception cref="Exception">
+        /// Wird ausgelöst, wenn die Update-Informationen nicht geladen werden konnten.
+        /// </exception>
         public async Task<string> GetActive()
         {
             if (!File.Exists(AppConfig.ActiveFile))
@@ -126,6 +136,8 @@ namespace Launcher_WPF
         public bool StartWithFallback()
         {
             GetInactive();
+
+            retucode = -5;
 
             string activeFolder = _active == "A" ? AppConfig.VersionA : AppConfig.VersionB;
             string inactiveFolder = _inactive == "A" ? AppConfig.VersionA : AppConfig.VersionB;
