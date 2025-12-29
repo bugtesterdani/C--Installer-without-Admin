@@ -184,7 +184,7 @@ namespace Launcher_WPF
             }
 
             Console.WriteLine("Beide Versionen beschädigt.");
-            StatusMessage = "Keine gültige Version gefunden. Installationsordner wird neu aufgebaut.";
+            //StatusMessage = "Keine gültige Version gefunden. Installationsordner wird neu aufgebaut.";
             Directory.Delete(AppConfig.BasePath, true);
             Directory.CreateDirectory(AppConfig.BasePath);
             return false;
