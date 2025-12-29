@@ -27,7 +27,8 @@ namespace Launcher_WPF
         private async void btnupdate(object sender, RoutedEventArgs e)
         {
             RunLabel.Content = "Update wird ausgeführt...";
-            await StartApp();
+            var t = Task.Run(StartApp);
+            t.Wait();
             RunLabel.Content = $"{update.StatusMessage} (Code {update.retucode})";
         }
 
