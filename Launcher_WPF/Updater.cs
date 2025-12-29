@@ -125,11 +125,13 @@ namespace Launcher_WPF
         /// </summary>
         public bool ValidateVersion(string folder)
         {
+            LastValidationError = string.Empty;
             string manifest = Path.Combine(folder, "manifest.json");
 
             if (!File.Exists(manifest))
             {
-                LastValidationError = "Manifest nicht gefunden.";
+                LastValidationError = $"Manifest nicht gefunden: {manifest}";
+                Console.WriteLine(LastValidationError);
                 return false;
             }
 
@@ -139,6 +141,8 @@ namespace Launcher_WPF
 
             var result = verifier.TryVerifyManifest(manifest, folder, out var failureReason);
             LastValidationError = result ? string.Empty : failureReason;
+            if (!result)
+                LastValidationError = $"Validierung fehlgeschlagen für {folder}: {failureReason}";
             return result;
         }
 

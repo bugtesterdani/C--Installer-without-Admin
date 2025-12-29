@@ -37,7 +37,7 @@ public class ManifestVerifier
 
         if (!File.Exists(manifestPath))
         {
-            failureReason = "Manifest fehlt.";
+            failureReason = $"Manifest fehlt ({manifestPath}).";
             return false;
         }
 
