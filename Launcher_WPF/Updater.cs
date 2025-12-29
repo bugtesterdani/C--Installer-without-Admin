@@ -49,7 +49,7 @@ namespace Launcher_WPF
                     Console.WriteLine("Konnte Update-Informationen nicht laden.");
                     throw new Exception("Update-Infos nicht geladen.");
                 }
-                Task.Run(async () => await DownloadAndInstallAsync(AppConfig.VersionA, info.Version)).Wait();
+                Task.Run(async () => await DownloadAndInstallAsync(AppConfig.VersionA, info)).Wait();
             }
 
             return File.ReadAllText(AppConfig.ActiveFile).Trim();
