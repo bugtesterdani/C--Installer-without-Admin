@@ -25,29 +25,62 @@ public class ManifestVerifier
     /// </summary>
     public bool VerifyManifest(string manifestPath, string baseFolder)
     {
-        var json = File.ReadAllText(manifestPath);
-        var doc = JsonDocument.Parse(json);
+        return TryVerifyManifest(manifestPath, baseFolder, out _);
+    }
+
+    /// <summary>
+    /// Validiert Manifest und gibt im Fehlerfall eine Begründung zurück.
+    /// </summary>
+    public bool TryVerifyManifest(string manifestPath, string baseFolder, out string failureReason)
+    {
+        failureReason = string.Empty;
+
+        if (!File.Exists(manifestPath))
+        {
+            failureReason = "Manifest fehlt.";
+            return false;
+        }
+
+        JsonDocument doc;
+        try
+        {
+            var json = File.ReadAllText(manifestPath);
+            doc = JsonDocument.Parse(json);
+        }
+        catch (Exception ex)
+        {
+            failureReason = $"Manifest konnte nicht gelesen werden: {ex.Message}";
+            return false;
+        }
 
         var root = doc.RootElement;
 
-        // Signatur extrahieren
-        string signatureBase64 = doc.RootElement.GetProperty("signature").GetString();
+        if (!root.TryGetProperty("signature", out var sigElement))
+        {
+            failureReason = "Signatur fehlt im Manifest.";
+            return false;
+        }
+
+        string signatureBase64 = sigElement.GetString();
         byte[] signature = Convert.FromBase64String(signatureBase64);
 
         // Manifest ohne Signatur neu erzeugen
+        Dictionary<string, string> files;
+        try
+        {
+            files = root.GetProperty("files").Deserialize<Dictionary<string, string>>();
+        }
+        catch (Exception ex)
+        {
+            failureReason = $"Dateiliste im Manifest fehlerhaft: {ex.Message}";
+            return false;
+        }
+
         var unsigned = new
         {
             version = root.GetProperty("version").GetString(),
-            files = root.GetProperty("files").Deserialize<Dictionary<string, string>>()
+            files
         };
-
-        // Python-kompatible Serialisierung
-        string unsignedJson = JsonSerializer.Serialize(unsigned, new JsonSerializerOptions
-        {
-            WriteIndented = false,
-            PropertyNamingPolicy = null, // KEIN CamelCase!
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-        });
 
         byte[] unsignedBytes = CanonicalJson(unsigned);
 
@@ -64,11 +97,12 @@ public class ManifestVerifier
         );
 
         if (!validSignature)
+        {
+            failureReason = "Signaturprüfung fehlgeschlagen.";
             return false;
+        }
 
         // Hashes prüfen
-        var files = unsigned.files;
-
         foreach (var kv in files)
         {
             string rel = kv.Key;
@@ -77,14 +111,20 @@ public class ManifestVerifier
             string fullPath = Path.Combine(baseFolder, rel);
 
             if (!File.Exists(fullPath))
+            {
+                failureReason = $"Datei fehlt: {rel}";
                 return false;
+            }
 
             using var sha = SHA256.Create();
             var fileBytes = File.ReadAllBytes(fullPath);
             var hash = BitConverter.ToString(sha.ComputeHash(fileBytes)).Replace("-", "").ToLower();
 
             if (hash != expectedHash)
+            {
+                failureReason = $"Hash stimmt nicht: {rel}";
                 return false;
+            }
         }
 
         return true;

@@ -24,7 +24,7 @@ namespace Launcher_WPF
             update.CreateDirectories();
         }
 
-        private void btnupdate(object sender, RoutedEventArgs e)
+        private async void btnupdate(object sender, RoutedEventArgs e)
         {
             RunLabel.Content = "Update wird ausgeführt...";
             var t = Task.Run(StartApp);

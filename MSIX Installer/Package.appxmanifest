@@ -9,7 +9,7 @@
   <Identity
     Name="LauncherInstaller"
     Publisher="CN=hello"
-    Version="1.0.3.6" />
+    Version="1.0.3.7" />
 
   <Properties>
     <DisplayName>MSIX Installer</DisplayName>

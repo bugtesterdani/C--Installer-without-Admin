@@ -23,6 +23,8 @@ namespace Launcher_WPF
         public int retucode = -1;
         /// <summary>Letzte Statusmeldung für die UI.</summary>
         public string StatusMessage { get; private set; } = "Bereit.";
+        /// <summary>Letzte Fehlerursache bei der Manifest-Validierung.</summary>
+        public string LastValidationError { get; private set; } = string.Empty;
 
         public void CreateDirectories()
         {
@@ -126,13 +128,18 @@ namespace Launcher_WPF
             string manifest = Path.Combine(folder, "manifest.json");
 
             if (!File.Exists(manifest))
+            {
+                LastValidationError = "Manifest nicht gefunden.";
                 return false;
+            }
 
             string publicKey = new publicpem().pem;
 
             var verifier = new ManifestVerifier(publicKey);
 
-            return verifier.VerifyManifest(manifest, folder);
+            var result = verifier.TryVerifyManifest(manifest, folder, out var failureReason);
+            LastValidationError = result ? string.Empty : failureReason;
+            return result;
         }
 
         /// <summary>
@@ -162,7 +169,7 @@ namespace Launcher_WPF
             }
             else
             {
-                StatusMessage = $"Aktive Version {_active} ungültig. Versuche Fallback.";
+                StatusMessage = $"Aktive Version {_active} ungültig ({LastValidationError}). Versuche Fallback.";
             }
 
             Console.WriteLine("Aktive Version fehlerhaft! Fallback...");
@@ -180,7 +187,7 @@ namespace Launcher_WPF
             }
             else
             {
-                StatusMessage = $"Fallback-Version {_inactive} ungültig.";
+                StatusMessage = $"Fallback-Version {_inactive} ungültig ({LastValidationError}).";
             }
 
             Console.WriteLine("Beide Versionen beschädigt.");
