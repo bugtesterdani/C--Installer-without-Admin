@@ -71,7 +71,7 @@ public class ManifestVerifier
 
         foreach (var kv in files)
         {
-            string rel = kv.Key;
+            string rel = NormalizeRelativePath(kv.Key);
             string expectedHash = kv.Value;
 
             string fullPath = Path.Combine(baseFolder, rel);
@@ -146,5 +146,21 @@ public class ManifestVerifier
             default:
                 throw new Exception("Unsupported JSON type");
         }
+    }
+
+    /// <summary>
+    /// Normalisiert relative Pfade aus dem Manifest auf einen plattformspezifischen Separator,
+    /// behält aber die Posix-Logik aus dem Manifest bei ("/" wird bevorzugt).
+    /// </summary>
+    private static string NormalizeRelativePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return path;
+
+        // Zuerst auf POSIX umstellen, dann auf das lokale Dateisystem abbilden.
+        var posix = path.Replace("\\", "/");
+        return Path.DirectorySeparatorChar == '/'
+            ? posix
+            : posix.Replace("/", Path.DirectorySeparatorChar.ToString());
     }
 }
