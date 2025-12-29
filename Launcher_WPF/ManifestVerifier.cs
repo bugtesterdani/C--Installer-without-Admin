@@ -210,18 +210,34 @@ public class ManifestVerifier
     }
 
     /// <summary>
-    /// Normalisiert relative Pfade aus dem Manifest auf einen plattformspezifischen Separator,
-    /// behält aber die Posix-Logik aus dem Manifest bei ("/" wird bevorzugt).
+    /// Normalisiert relative Pfade aus dem Manifest:
+    /// - wandelt "\" in "/" um
+    /// - entfernt leere Segmente und "."
+    /// - lehnt Pfade mit ".." ab
+    /// - mappt anschließend auf den lokalen Separator
     /// </summary>
     private static string NormalizeRelativePath(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
             return path;
 
-        // Zuerst auf POSIX umstellen, dann auf das lokale Dateisystem abbilden.
         var posix = path.Replace("\\", "/");
+
+        var parts = posix.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var cleaned = new List<string>();
+        foreach (var part in parts)
+        {
+            if (part == ".")
+                continue;
+            if (part == "..")
+                throw new InvalidOperationException("Unzulässiger Pfad im Manifest (..).");
+            cleaned.Add(part);
+        }
+
+        var normalizedPosix = string.Join("/", cleaned);
+
         return Path.DirectorySeparatorChar == '/'
-            ? posix
-            : posix.Replace("/", Path.DirectorySeparatorChar.ToString());
+            ? normalizedPosix
+            : normalizedPosix.Replace("/", Path.DirectorySeparatorChar.ToString());
     }
 }
