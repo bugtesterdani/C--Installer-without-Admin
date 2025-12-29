@@ -43,13 +43,13 @@ namespace Launcher_WPF
                 File.WriteAllText(AppConfig.ActiveFile, "A");
                 if (!Directory.Exists(Path.Combine(AppConfig.BasePath, "A")))
                     Directory.CreateDirectory(Path.Combine(AppConfig.BasePath, "A"));
-                var info = await FetchUpdateInfoAsync();
+                var info = Task.Run(async () => await FetchUpdateInfoAsync()).Result;
                 if (info == null)
                 {
                     Console.WriteLine("Konnte Update-Informationen nicht laden.");
                     throw new Exception("Update-Infos nicht geladen.");
                 }
-                await DownloadAndInstallAsync(AppConfig.VersionA, info.Version);
+                Task.Run(async () => await DownloadAndInstallAsync(AppConfig.VersionA, info.Version)).Wait();
             }
 
             return File.ReadAllText(AppConfig.ActiveFile).Trim();
