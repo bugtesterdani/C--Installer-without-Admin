@@ -24,10 +24,11 @@ namespace Launcher_WPF
             update.CreateDirectories();
         }
 
-        private async void btnupdate(object sender, RoutedEventArgs e)
+        private void btnupdate(object sender, RoutedEventArgs e)
         {
             RunLabel.Content = "Update wird ausgeführt...";
-            await StartApp();
+            var t = Task.Run(StartApp);
+            t.Wait();
             RunLabel.Content = $"{update.StatusMessage} (Code {update.retucode})";
         }
 
