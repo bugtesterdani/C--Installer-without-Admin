@@ -233,6 +233,7 @@ namespace Launcher_WPF
             }
             catch
             {
+                retucode += -10;
                 return false;
             }
         }
