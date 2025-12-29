@@ -31,23 +31,42 @@ public class ManifestVerifier
         var root = doc.RootElement;
 
         // Signatur extrahieren
-        string signatureBase64 = doc.RootElement.GetProperty("signature").GetString();
-        byte[] signature = Convert.FromBase64String(signatureBase64);
+        if (!root.TryGetProperty("signature", out var signatureElement))
+            return false;
+
+        string signatureBase64 = signatureElement.GetString();
+        byte[] signature;
+        try
+        {
+            signature = Convert.FromBase64String(signatureBase64);
+        }
+        catch
+        {
+            return false;
+        }
 
         // Manifest ohne Signatur neu erzeugen
+        if (!root.TryGetProperty("files", out var filesElement) || filesElement.ValueKind != JsonValueKind.Object)
+            return false;
+
+        Dictionary<string, string> files;
+        try
+        {
+            files = filesElement.Deserialize<Dictionary<string, string>>();
+        }
+        catch
+        {
+            return false;
+        }
+
         var unsigned = new
         {
-            version = root.GetProperty("version").GetString(),
-            files = root.GetProperty("files").Deserialize<Dictionary<string, string>>()
+            version = root.TryGetProperty("version", out var versionEl) ? versionEl.GetString() : null,
+            files
         };
 
-        // Python-kompatible Serialisierung
-        string unsignedJson = JsonSerializer.Serialize(unsigned, new JsonSerializerOptions
-        {
-            WriteIndented = false,
-            PropertyNamingPolicy = null, // KEIN CamelCase!
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-        });
+        if (unsigned.version is null)
+            return false;
 
         byte[] unsignedBytes = CanonicalJson(unsigned);
 
@@ -71,7 +90,7 @@ public class ManifestVerifier
 
         foreach (var kv in files)
         {
-            string rel = kv.Key;
+            string rel = NormalizeRelativePath(kv.Key);
             string expectedHash = kv.Value;
 
             string fullPath = Path.Combine(baseFolder, rel);
@@ -122,7 +141,7 @@ public class ManifestVerifier
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-                var dict = new SortedDictionary<string, object>();
+                var dict = new SortedDictionary<string, object>(StringComparer.Ordinal);
                 foreach (var prop in element.EnumerateObject())
                     dict[prop.Name] = SortElement(prop.Value);
                 return dict;
@@ -147,4 +166,39 @@ public class ManifestVerifier
                 throw new Exception("Unsupported JSON type");
         }
     }
-}
+
+        /// <summary>
+        /// Normalisiert relative Pfade aus dem Manifest:
+        /// - wandelt "\" in "/" um
+        /// - entfernt leere Segmente und "."
+        /// - lehnt Pfade mit ".." ab
+        /// - mappt anschließend auf den lokalen Separator
+        /// </summary>
+        private static string NormalizeRelativePath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return path;
+
+            // Zuerst auf POSIX umstellen
+            var posix = path.Replace("\\", "/");
+
+            // Zerlegen und säubern
+            var parts = posix.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var cleaned = new List<string>();
+            foreach (var part in parts)
+            {
+                if (part == ".")
+                    continue;
+                if (part == "..")
+                    throw new InvalidOperationException("Unzulässiger Pfad im Manifest (..).");
+                cleaned.Add(part);
+            }
+
+            var normalizedPosix = string.Join("/", cleaned);
+
+            // Auf lokalen Separator abbilden
+            return Path.DirectorySeparatorChar == '/'
+                ? normalizedPosix
+                : normalizedPosix.Replace("/", Path.DirectorySeparatorChar.ToString());
+        }
+    }

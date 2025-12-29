@@ -62,13 +62,28 @@ public class ManifestVerifier
         }
 
         string signatureBase64 = sigElement.GetString();
-        byte[] signature = Convert.FromBase64String(signatureBase64);
+        byte[] signature;
+        try
+        {
+            signature = Convert.FromBase64String(signatureBase64);
+        }
+        catch (Exception ex)
+        {
+            failureReason = $"Signatur ist kein gültiges Base64: {ex.Message}";
+            return false;
+        }
 
         // Manifest ohne Signatur neu erzeugen
+        if (!root.TryGetProperty("files", out var filesElement) || filesElement.ValueKind != JsonValueKind.Object)
+        {
+            failureReason = "Dateiliste fehlt oder ist kein Objekt.";
+            return false;
+        }
+
         Dictionary<string, string> files;
         try
         {
-            files = root.GetProperty("files").Deserialize<Dictionary<string, string>>();
+            files = filesElement.Deserialize<Dictionary<string, string>>();
         }
         catch (Exception ex)
         {
@@ -76,11 +91,28 @@ public class ManifestVerifier
             return false;
         }
 
+        if (files.Count() < 1)
+        {
+            failureReason = "File Datei enthält keine Dateien.";
+            return false;
+        }
+        Dictionary<string, string> filebytes;
+        foreach (var file in files)
+        {
+            filebytes.Add(NormalizeRelativePath(file.Key), file.Value);
+        }
+
         var unsigned = new
         {
-            version = root.GetProperty("version").GetString(),
-            files
+            version = root.TryGetProperty("version", out var versionElement) ? versionElement.GetString() : null,
+            filebytes
         };
+
+        if (unsigned.version is null)
+        {
+            failureReason = "Versionsfeld fehlt oder ist leer.";
+            return false;
+        }
 
         byte[] unsignedBytes = CanonicalJson(unsigned);
 
@@ -105,7 +137,7 @@ public class ManifestVerifier
         // Hashes prüfen
         foreach (var kv in files)
         {
-            string rel = kv.Key;
+            string rel = NormalizeRelativePath(kv.Key);
             string expectedHash = kv.Value;
 
             string fullPath = Path.Combine(baseFolder, rel);
@@ -162,7 +194,7 @@ public class ManifestVerifier
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-                var dict = new SortedDictionary<string, object>();
+                var dict = new SortedDictionary<string, object>(StringComparer.Ordinal);
                 foreach (var prop in element.EnumerateObject())
                     dict[prop.Name] = SortElement(prop.Value);
                 return dict;
@@ -186,5 +218,37 @@ public class ManifestVerifier
             default:
                 throw new Exception("Unsupported JSON type");
         }
+    }
+
+    /// <summary>
+    /// Normalisiert relative Pfade aus dem Manifest:
+    /// - wandelt "\" in "/" um
+    /// - entfernt leere Segmente und "."
+    /// - lehnt Pfade mit ".." ab
+    /// - mappt anschließend auf den lokalen Separator
+    /// </summary>
+    private static string NormalizeRelativePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return path;
+
+        var posix = path.Replace("\\", "/");
+
+        var parts = posix.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var cleaned = new List<string>();
+        foreach (var part in parts)
+        {
+            if (part == ".")
+                continue;
+            if (part == "..")
+                throw new InvalidOperationException("Unzulässiger Pfad im Manifest (..).");
+            cleaned.Add(part);
+        }
+
+        var normalizedPosix = string.Join("/", cleaned);
+
+        return Path.DirectorySeparatorChar == '/'
+            ? normalizedPosix
+            : normalizedPosix.Replace("/", Path.DirectorySeparatorChar.ToString());
     }
 }
