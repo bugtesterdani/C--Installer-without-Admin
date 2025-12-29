@@ -36,7 +36,7 @@ namespace Launcher_WPF
         /// <summary>
         /// Liest den aktiven Slot von der Festplatte (Standard "A", falls nicht vorhanden).
         /// </summary>
-        public Task<string> GetActive()
+        public async Task<string> GetActive()
         {
             if (!File.Exists(AppConfig.ActiveFile))
             {
