@@ -96,7 +96,7 @@ public class ManifestVerifier
             failureReason = "File Datei enthält keine Dateien.";
             return false;
         }
-        Dictionary<string, string> filebytes;
+        Dictionary<string, string> filebytes = new();
         foreach (var file in files)
         {
             filebytes.Add(NormalizeRelativePath(file.Key), file.Value);
