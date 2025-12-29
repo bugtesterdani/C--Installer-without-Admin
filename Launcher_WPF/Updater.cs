@@ -23,7 +23,7 @@ namespace Launcher_WPF
         /// <summary>Inaktiver Slot ("A" oder "B").</summary>
         private string _inactive;
         /// <summary>Rückgabecode des gestarteten Prozesses (falls verfügbar).</summary>
-        public int retucode;
+        public int retucode = -1;
 
         public void CreateDirectories()
         {
@@ -36,20 +36,20 @@ namespace Launcher_WPF
         /// <summary>
         /// Liest den aktiven Slot von der Festplatte (Standard "A", falls nicht vorhanden).
         /// </summary>
-        public string GetActive()
+        public Task<string> GetActive()
         {
             if (!File.Exists(AppConfig.ActiveFile))
             {
                 File.WriteAllText(AppConfig.ActiveFile, "A");
                 if (!Directory.Exists(Path.Combine(AppConfig.BasePath, "A")))
                     Directory.CreateDirectory(Path.Combine(AppConfig.BasePath, "A"));
-                var info = Task.Run(async () => await FetchUpdateInfoAsync()).Result;
+                var info = await FetchUpdateInfoAsync();
                 if (info == null)
                 {
                     Console.WriteLine("Konnte Update-Informationen nicht laden.");
                     throw new Exception("Update-Infos nicht geladen.");
                 }
-                Task.Run(async () => await DownloadAndInstallAsync(AppConfig.VersionA, info)).Wait();
+                await DownloadAndInstallAsync(AppConfig.VersionA, info);
             }
 
             return File.ReadAllText(AppConfig.ActiveFile).Trim();
@@ -60,7 +60,7 @@ namespace Launcher_WPF
         /// </summary>
         public void GetInactive()
         {
-            _active = GetActive();
+            _active = GetActive().GetAwaiter().GetResult();
             _inactive = _active == "A" ? "B" : "A";
         }
 
@@ -150,7 +150,6 @@ namespace Launcher_WPF
             Directory.CreateDirectory(AppConfig.BasePath);
             return false;
         }
-
 
         /// <summary>
         /// Lädt Update-Metadaten vom konfigurierten Endpunkt.
