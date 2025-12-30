@@ -1,4 +1,5 @@
-﻿using System.Configuration;
+﻿using System;
+using System.Configuration;
 using System.Data;
 using System.Threading.Tasks;
 using System.Windows;
@@ -25,7 +26,7 @@ namespace MeineApp
                 while (true)
                 {
                     await Task.Delay(2000);
-                    Console.WriteLine("HEARTBEAT");
+                    Console.WriteLine($"HEARTBEAT {DateTime.UtcNow:O}");
                 }
             });
         }

@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
 using System.Text.Json;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -36,6 +37,7 @@ namespace Launcher_WPF
         private readonly TimeSpan _heartbeatInterval = TimeSpan.FromSeconds(5);
         private readonly TimeSpan _heartbeatTimeout = TimeSpan.FromSeconds(15);
         private DateTime _lastHeartbeat = DateTime.MinValue;
+        public TimeSpan LastHeartbeatPing { get; private set; } = TimeSpan.Zero;
 
         public void CreateDirectories()
         {
@@ -280,7 +282,7 @@ namespace Launcher_WPF
                 };
                 var proc = Process.Start(psi);
                 if (proc == null)
-                    return false;
+                    return Task.FromResult(false);
 
                 // PIPE-Kommunikation über stdout/stdin
                 _heartbeatCts?.Cancel();
@@ -350,9 +352,23 @@ namespace Launcher_WPF
                     if (line == null)
                         break;
 
-                    if (line.Contains("HEARTBEAT", StringComparison.OrdinalIgnoreCase))
+                    if (line.StartsWith("HEARTBEAT", StringComparison.OrdinalIgnoreCase))
                     {
-                        _lastHeartbeat = DateTime.UtcNow;
+                        var now = DateTime.UtcNow;
+                        if (TryParseHeartbeatTimestamp(line, out var sentUtc))
+                        {
+                            LastHeartbeatPing = now - sentUtc;
+                            Console.WriteLine($"Heartbeat empfangen (Ping: {LastHeartbeatPing.TotalMilliseconds:F0} ms)");
+                            StatusMessage = $"Heartbeat OK (Ping: {LastHeartbeatPing.TotalMilliseconds:F0} ms)";
+                        }
+                        else
+                        {
+                            LastHeartbeatPing = TimeSpan.Zero;
+                            Console.WriteLine("Heartbeat empfangen.");
+                            StatusMessage = "Heartbeat OK";
+                        }
+
+                        _lastHeartbeat = now;
                         continue;
                     }
 
@@ -363,6 +379,16 @@ namespace Launcher_WPF
             {
                 // Ignorieren, wenn der Stream geschlossen wurde oder Cancellation erfolgte
             }
+        }
+
+        private static bool TryParseHeartbeatTimestamp(string line, out DateTime heartbeatTimeUtc)
+        {
+            heartbeatTimeUtc = DateTime.MinValue;
+            var parts = line.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2)
+                return false;
+
+            return DateTime.TryParse(parts[1], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out heartbeatTimeUtc);
         }
     }
 
