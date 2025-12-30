@@ -4,6 +4,8 @@ using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
 using System.Text.Json;
+using System.Globalization;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Launcher_WPF
@@ -25,6 +27,17 @@ namespace Launcher_WPF
         public string StatusMessage { get; private set; } = "Bereit.";
         /// <summary>Letzte Fehlerursache bei der Manifest-Validierung.</summary>
         public string LastValidationError { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// Wird ausgelöst, wenn der gestartete Prozess beendet wurde.
+        /// </summary>
+        public event Action<int>? AppExited;
+
+        private CancellationTokenSource? _heartbeatCts;
+        private readonly TimeSpan _heartbeatInterval = TimeSpan.FromSeconds(5);
+        private readonly TimeSpan _heartbeatTimeout = TimeSpan.FromSeconds(15);
+        private DateTime _lastHeartbeat = DateTime.MinValue;
+        public TimeSpan LastHeartbeatPing { get; private set; } = TimeSpan.Zero;
 
         public void CreateDirectories()
         {
@@ -149,7 +162,7 @@ namespace Launcher_WPF
         /// <summary>
         /// Startet die aktive Version und wechselt bei Fehlern auf die inaktive Version.
         /// </summary>
-        public bool StartWithFallback()
+        public async Task<bool> StartWithFallbackAsync()
         {
             GetInactive();
 
@@ -163,9 +176,9 @@ namespace Launcher_WPF
             // 1. Prüfen ob aktive Version gültig ist
             if (ValidateVersion(activeFolder))
             {
-                if (TryStart(activeFolder))
+                if (await TryStartAsync(activeFolder))
                 {
-                    StatusMessage = $"Aktive Version {_active} beendet mit Code {retucode}.";
+                    StatusMessage = $"Aktive Version {_active} wurde gestartet.";
                     return true;
                 }
 
@@ -181,9 +194,9 @@ namespace Launcher_WPF
             if (ValidateVersion(inactiveFolder))
             {
                 File.WriteAllText(AppConfig.ActiveFile, _inactive);
-                if (TryStart(inactiveFolder))
+                if (await TryStartAsync(inactiveFolder))
                 {
-                    StatusMessage = $"Fallback-Version {_inactive} beendet mit Code {retucode}.";
+                    StatusMessage = $"Fallback-Version {_inactive} wurde gestartet.";
                     return true;
                 }
 
@@ -214,7 +227,45 @@ namespace Launcher_WPF
         /// </summary>
         private static bool IsUpToDate(string targetDir, string remoteVersion)
         {
-            return ReadLocalVersion(targetDir) == remoteVersion;
+            string localVersion = ReadLocalVersion(targetDir);
+            if (localVersion.Split('.').Count() < 4 || remoteVersion.Split('.').Count() < 4)
+                return false;
+            
+            int compared = checktwocompare(localVersion, remoteVersion, 0);
+            if (compared == 2)
+                return true;                // Ist aktueller
+            else if (compared == 0)
+                return false;               // Ist veraltet
+            
+            compared = checktwocompare(localVersion, remoteVersion, 1);
+            if (compared == 2)
+                return true;                // Ist aktueller
+            else if (compared == 0)
+                return false;               // Ist veraltet
+            
+            compared = checktwocompare(localVersion, remoteVersion, 2);
+            if (compared == 2)
+                return true;                // Ist aktueller
+            else if (compared == 0)
+                return false;               // Ist veraltet
+
+            compared = checktwocompare(localVersion, remoteVersion, 3);
+            if (compared == 0)
+                return false;               // Ist veraltet
+            else
+                return true;                // Ist aktueller oder gleich
+        }
+
+        private static int checktwocompare(string localVersion, string remoteVersion, int index)
+        {
+            int num1 = Convert.ToInt16(localVersion.Split('.')[index]);
+            int num2 = Convert.ToInt16(remoteVersion.Split('.')[index]);
+            if (num1 > num2)
+                return 2;
+            else if (num1 == num2)
+                return 1;
+            else
+                return 0;
         }
 
         /// <summary>
@@ -254,25 +305,137 @@ namespace Launcher_WPF
         /// <summary>
         /// Startet eine veröffentlichte .NET-Anwendung und erfasst den Exit-Code.
         /// </summary>
-        private bool TryStart(string exe)
+        private Task<bool> TryStartAsync(string exe)
         {
             exe = Path.Combine(exe, "MeineApp.exe");
             try
             {
                 var psi = new ProcessStartInfo(exe)
                 {
-                    UseShellExecute = false
+                    UseShellExecute = false,
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
                 };
                 var proc = Process.Start(psi);
-                proc.WaitForExit();
-                retucode = proc.ExitCode;
-                return true;
+                if (proc == null)
+                    return Task.FromResult(false);
+
+                // PIPE-Kommunikation über stdout/stdin
+                _heartbeatCts?.Cancel();
+                _heartbeatCts = new CancellationTokenSource();
+                _lastHeartbeat = DateTime.UtcNow;
+                var token = _heartbeatCts.Token;
+
+                var heartbeatTask = Task.Run(() => MonitorHeartbeatAsync(proc, token), token);
+                var readOutputTask = Task.Run(() => ReadPipeAsync(proc, token), token);
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await proc.WaitForExitAsync(token);
+                        retucode = proc.ExitCode;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // beabsichtigter Abbruch bei Cancellation
+                    }
+                    finally
+                    {
+                        _heartbeatCts.Cancel();
+                        await Task.WhenAll(Task.WhenAll(heartbeatTask, readOutputTask).ContinueWith(_ => Task.CompletedTask));
+                        StatusMessage = $"Anwendung beendet. ({retucode})";
+                        AppExited?.Invoke(retucode);
+                    }
+                }, CancellationToken.None);
+
+                return Task.FromResult(true);
             }
             catch
             {
                 retucode += -10;
-                return false;
+                return Task.FromResult(false);
             }
+        }
+
+        private async Task MonitorHeartbeatAsync(Process proc, CancellationToken token)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested && !proc.HasExited)
+                {
+                    await Task.Delay(_heartbeatInterval, token);
+                    if (DateTime.UtcNow - _lastHeartbeat > _heartbeatTimeout)
+                    {
+                        Console.WriteLine("Heartbeat: Anwendung reagiert nicht mehr.");
+                        if (token.IsCancellationRequested)
+                            return;
+                        StatusMessage = "Heartbeat: Anwendung reagiert nicht mehr.";
+                        break;
+                    }
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                // erwartet bei Stop
+            }
+        }
+
+        private async Task ReadPipeAsync(Process proc, CancellationToken token)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested && !proc.HasExited)
+                {
+                    var line = await proc.StandardOutput.ReadLineAsync(token);
+                    if (token.IsCancellationRequested)
+                        return;
+                    if (line == null)
+                        break;
+
+                    if (line.StartsWith("HEARTBEAT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var now = DateTime.UtcNow;
+                        if (TryParseHeartbeatTimestamp(line, out var sentUtc))
+                        {
+                            LastHeartbeatPing = now - sentUtc;
+                            Console.WriteLine($"Heartbeat empfangen (Ping: {LastHeartbeatPing.TotalMilliseconds:F0} ms)");
+                            if (token.IsCancellationRequested)
+                                return;
+                            StatusMessage = $"Heartbeat OK (Ping: {LastHeartbeatPing.TotalMilliseconds:F0} ms)";
+                        }
+                        else
+                        {
+                            LastHeartbeatPing = TimeSpan.Zero;
+                            Console.WriteLine("Heartbeat empfangen.");
+                            if (token.IsCancellationRequested)
+                                return;
+                            StatusMessage = "Heartbeat OK";
+                        }
+
+                        _lastHeartbeat = now;
+                        continue;
+                    }
+
+                    Console.WriteLine($"APP: {line}");
+                }
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException)
+            {
+                // Ignorieren, wenn der Stream geschlossen wurde oder Cancellation erfolgte
+            }
+        }
+
+        private static bool TryParseHeartbeatTimestamp(string line, out DateTime heartbeatTimeUtc)
+        {
+            heartbeatTimeUtc = DateTime.MinValue;
+            var parts = line.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2)
+                return false;
+
+            return DateTime.TryParse(parts[1], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out heartbeatTimeUtc);
         }
     }
 
