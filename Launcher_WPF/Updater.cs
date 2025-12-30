@@ -373,7 +373,7 @@ namespace Launcher_WPF
                         if (token.IsCancellationRequested)
                             return;
                         StatusMessage = "Heartbeat: Anwendung reagiert nicht mehr.";
-                        break;
+                        await Task.Delay(_heartbeatInterval * 2, token);
                     }
                 }
             }
