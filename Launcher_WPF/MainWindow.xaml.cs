@@ -1,4 +1,4 @@
-﻿using System.Text;
+﻿using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -22,14 +22,14 @@ namespace Launcher_WPF
         {
             InitializeComponent();
             update.CreateDirectories();
+            update.AppExited += OnAppExited;
         }
 
         private async void btnupdate(object sender, RoutedEventArgs e)
         {
             RunLabel.Content = "Update wird ausgeführt...";
-            var t = Task.Run(StartApp);
-            t.Wait();
-            RunLabel.Content = $"{update.StatusMessage} (Code {update.retucode})";
+            await StartApp();
+            RunLabel.Content = update.StatusMessage;
         }
 
         private async Task StartApp()
@@ -40,13 +40,21 @@ namespace Launcher_WPF
             await update.UpdateInactiveVersionAsync();
 
             // Start active version with fallback
-            if (!update.StartWithFallback())
+            if (!await update.StartWithFallbackAsync())
             {
                 // Lade frische Version herunter und versuche erneut
                 Console.WriteLine("Fehler: Konnte keine Version starten.");
                 await update.UpdateInactiveVersionAsync();
-                update.StartWithFallback();
+                await update.StartWithFallbackAsync();
             }
+        }
+
+        private void OnAppExited(int exitCode)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                RunLabel.Content = $"{update.StatusMessage} (Code {exitCode})";
+            });
         }
     }
 }

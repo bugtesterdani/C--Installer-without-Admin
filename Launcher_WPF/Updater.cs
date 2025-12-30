@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Launcher_WPF
@@ -25,6 +26,16 @@ namespace Launcher_WPF
         public string StatusMessage { get; private set; } = "Bereit.";
         /// <summary>Letzte Fehlerursache bei der Manifest-Validierung.</summary>
         public string LastValidationError { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// Wird ausgelöst, wenn der gestartete Prozess beendet wurde.
+        /// </summary>
+        public event Action<int>? AppExited;
+
+        private CancellationTokenSource? _heartbeatCts;
+        private readonly TimeSpan _heartbeatInterval = TimeSpan.FromSeconds(5);
+        private readonly TimeSpan _heartbeatTimeout = TimeSpan.FromSeconds(15);
+        private DateTime _lastHeartbeat = DateTime.MinValue;
 
         public void CreateDirectories()
         {
@@ -149,7 +160,7 @@ namespace Launcher_WPF
         /// <summary>
         /// Startet die aktive Version und wechselt bei Fehlern auf die inaktive Version.
         /// </summary>
-        public bool StartWithFallback()
+        public async Task<bool> StartWithFallbackAsync()
         {
             GetInactive();
 
@@ -163,9 +174,9 @@ namespace Launcher_WPF
             // 1. Prüfen ob aktive Version gültig ist
             if (ValidateVersion(activeFolder))
             {
-                if (TryStart(activeFolder))
+                if (await TryStartAsync(activeFolder))
                 {
-                    StatusMessage = $"Aktive Version {_active} beendet mit Code {retucode}.";
+                    StatusMessage = $"Aktive Version {_active} wurde gestartet.";
                     return true;
                 }
 
@@ -181,9 +192,9 @@ namespace Launcher_WPF
             if (ValidateVersion(inactiveFolder))
             {
                 File.WriteAllText(AppConfig.ActiveFile, _inactive);
-                if (TryStart(inactiveFolder))
+                if (await TryStartAsync(inactiveFolder))
                 {
-                    StatusMessage = $"Fallback-Version {_inactive} beendet mit Code {retucode}.";
+                    StatusMessage = $"Fallback-Version {_inactive} wurde gestartet.";
                     return true;
                 }
 
@@ -254,24 +265,103 @@ namespace Launcher_WPF
         /// <summary>
         /// Startet eine veröffentlichte .NET-Anwendung und erfasst den Exit-Code.
         /// </summary>
-        private bool TryStart(string exe)
+        private Task<bool> TryStartAsync(string exe)
         {
             exe = Path.Combine(exe, "MeineApp.exe");
             try
             {
                 var psi = new ProcessStartInfo(exe)
                 {
-                    UseShellExecute = false
+                    UseShellExecute = false,
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
                 };
                 var proc = Process.Start(psi);
-                proc.WaitForExit();
-                retucode = proc.ExitCode;
-                return true;
+                if (proc == null)
+                    return false;
+
+                // PIPE-Kommunikation über stdout/stdin
+                _heartbeatCts?.Cancel();
+                _heartbeatCts = new CancellationTokenSource();
+                _lastHeartbeat = DateTime.UtcNow;
+                var token = _heartbeatCts.Token;
+
+                var heartbeatTask = Task.Run(() => MonitorHeartbeatAsync(proc, token), token);
+                var readOutputTask = Task.Run(() => ReadPipeAsync(proc, token), token);
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await proc.WaitForExitAsync(token);
+                        retucode = proc.ExitCode;
+                        AppExited?.Invoke(retucode);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // beabsichtigter Abbruch bei Cancellation
+                    }
+                    finally
+                    {
+                        _heartbeatCts.Cancel();
+                        await Task.WhenAll(Task.WhenAll(heartbeatTask, readOutputTask).ContinueWith(_ => Task.CompletedTask));
+                    }
+                }, CancellationToken.None);
+
+                return Task.FromResult(true);
             }
             catch
             {
                 retucode += -10;
-                return false;
+                return Task.FromResult(false);
+            }
+        }
+
+        private async Task MonitorHeartbeatAsync(Process proc, CancellationToken token)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested && !proc.HasExited)
+                {
+                    await Task.Delay(_heartbeatInterval, token);
+                    if (DateTime.UtcNow - _lastHeartbeat > _heartbeatTimeout)
+                    {
+                        Console.WriteLine("Heartbeat: Anwendung reagiert nicht mehr.");
+                        StatusMessage = "Heartbeat: Anwendung reagiert nicht mehr.";
+                        break;
+                    }
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                // erwartet bei Stop
+            }
+        }
+
+        private async Task ReadPipeAsync(Process proc, CancellationToken token)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested && !proc.HasExited)
+                {
+                    var line = await proc.StandardOutput.ReadLineAsync();
+                    if (line == null)
+                        break;
+
+                    if (line.Contains("HEARTBEAT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _lastHeartbeat = DateTime.UtcNow;
+                        continue;
+                    }
+
+                    Console.WriteLine($"APP: {line}");
+                }
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException)
+            {
+                // Ignorieren, wenn der Stream geschlossen wurde oder Cancellation erfolgte
             }
         }
     }
