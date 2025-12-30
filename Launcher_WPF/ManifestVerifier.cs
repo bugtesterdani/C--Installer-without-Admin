@@ -96,16 +96,11 @@ public class ManifestVerifier
             failureReason = "File Datei enthält keine Dateien.";
             return false;
         }
-        Dictionary<string, string> filebytes = new();
-        foreach (var file in files)
-        {
-            filebytes.Add(NormalizeRelativePath(file.Key), file.Value);
-        }
 
         var unsigned = new
         {
             version = root.TryGetProperty("version", out var versionElement) ? versionElement.GetString() : null,
-            filebytes
+            files
         };
 
         if (unsigned.version is null)
