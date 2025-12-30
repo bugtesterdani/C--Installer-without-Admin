@@ -227,7 +227,45 @@ namespace Launcher_WPF
         /// </summary>
         private static bool IsUpToDate(string targetDir, string remoteVersion)
         {
-            return ReadLocalVersion(targetDir) == remoteVersion;
+            string localVersion = ReadLocalVersion(targetDir);
+            if (localVersion.Split('.').Count() < 4 || remoteVersion.Split('.').Count() < 4)
+                return false;
+            
+            int compared = checktwocompare(localVersion, remoteVersion, 0);
+            if (compared == 2)
+                return true;                // Ist aktueller
+            else if (compared == 0)
+                return false;               // Ist veraltet
+            
+            compared = checktwocompare(localVersion, remoteVersion, 1);
+            if (compared == 2)
+                return true;                // Ist aktueller
+            else if (compared == 0)
+                return false;               // Ist veraltet
+            
+            compared = checktwocompare(localVersion, remoteVersion, 2);
+            if (compared == 2)
+                return true;                // Ist aktueller
+            else if (compared == 0)
+                return false;               // Ist veraltet
+
+            compared = checktwocompare(localVersion, remoteVersion, 3);
+            if (compared == 0)
+                return false;               // Ist veraltet
+            else
+                return true;                // Ist aktueller oder gleich
+        }
+
+        private static int checktwocompare(string localVersion, string remoteVersion, int index)
+        {
+            int num1 = Convert.ToInt16(localVersion.Split('.')[index]);
+            int num2 = Convert.ToInt16(remoteVersion.Split('.')[index]);
+            if (num1 > num2)
+                return 2;
+            else if (num1 == num2)
+                return 1;
+            else
+                return 0;
         }
 
         /// <summary>
@@ -299,7 +337,6 @@ namespace Launcher_WPF
                     {
                         await proc.WaitForExitAsync(token);
                         retucode = proc.ExitCode;
-                        AppExited?.Invoke(retucode);
                     }
                     catch (OperationCanceledException)
                     {
@@ -309,6 +346,8 @@ namespace Launcher_WPF
                     {
                         _heartbeatCts.Cancel();
                         await Task.WhenAll(Task.WhenAll(heartbeatTask, readOutputTask).ContinueWith(_ => Task.CompletedTask));
+                        StatusMessage = $"Anwendung beendet. ({retucode})";
+                        AppExited?.Invoke(retucode);
                     }
                 }, CancellationToken.None);
 
@@ -331,6 +370,8 @@ namespace Launcher_WPF
                     if (DateTime.UtcNow - _lastHeartbeat > _heartbeatTimeout)
                     {
                         Console.WriteLine("Heartbeat: Anwendung reagiert nicht mehr.");
+                        if (token.IsCancellationRequested)
+                            return;
                         StatusMessage = "Heartbeat: Anwendung reagiert nicht mehr.";
                         break;
                     }
@@ -348,7 +389,9 @@ namespace Launcher_WPF
             {
                 while (!token.IsCancellationRequested && !proc.HasExited)
                 {
-                    var line = await proc.StandardOutput.ReadLineAsync();
+                    var line = await proc.StandardOutput.ReadLineAsync(token);
+                    if (token.IsCancellationRequested)
+                        return;
                     if (line == null)
                         break;
 
@@ -359,12 +402,16 @@ namespace Launcher_WPF
                         {
                             LastHeartbeatPing = now - sentUtc;
                             Console.WriteLine($"Heartbeat empfangen (Ping: {LastHeartbeatPing.TotalMilliseconds:F0} ms)");
+                            if (token.IsCancellationRequested)
+                                return;
                             StatusMessage = $"Heartbeat OK (Ping: {LastHeartbeatPing.TotalMilliseconds:F0} ms)";
                         }
                         else
                         {
                             LastHeartbeatPing = TimeSpan.Zero;
                             Console.WriteLine("Heartbeat empfangen.");
+                            if (token.IsCancellationRequested)
+                                return;
                             StatusMessage = "Heartbeat OK";
                         }
 

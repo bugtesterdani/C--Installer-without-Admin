@@ -25,8 +25,9 @@ namespace MeineApp
             {
                 while (true)
                 {
-                    await Task.Delay(2000);
-                    Console.WriteLine($"HEARTBEAT {DateTime.UtcNow:O}");
+                    DateTime now = DateTime.UtcNow;
+                    await Task.Delay(10000);
+                    Console.WriteLine($"HEARTBEAT {now.AddMilliseconds(10000):O}");
                 }
             });
         }
