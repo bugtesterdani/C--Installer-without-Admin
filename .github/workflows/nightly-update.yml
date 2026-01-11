@@ -26,6 +26,10 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $installDir
           Add-Content -Path $env:GITHUB_ENV -Value "DOTNET_ROOT=$installDir"
 
+      - name: Install Windows Desktop workload
+        shell: pwsh
+        run: dotnet workload install windowsdesktop
+
       - name: Install dotnet-outdated-tool
         shell: pwsh
         run: dotnet tool install --global dotnet-outdated-tool
