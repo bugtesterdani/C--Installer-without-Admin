@@ -26,21 +26,59 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $installDir
           Add-Content -Path $env:GITHUB_ENV -Value "DOTNET_ROOT=$installDir"
 
+      - name: Install .NET SDK (8.0)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installDir = Join-Path $env:USERPROFILE ".dotnet8"
+          Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile dotnet-install.ps1
+          ./dotnet-install.ps1 -Channel 8.0 -InstallDir $installDir
+          Add-Content -Path $env:GITHUB_ENV -Value "DOTNET_8_ROOT=$installDir"
+          Add-Content -Path $env:GITHUB_PATH -Value $installDir
+
       - name: Install dotnet-outdated-tool
         shell: pwsh
-        run: dotnet tool install --global dotnet-outdated-tool
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_8_ROOT }}
+          DOTNET_MULTILEVEL_LOOKUP: 0
+        run: |
+          $dotnet8 = Join-Path $env:DOTNET_8_ROOT "dotnet.exe"
+          & $dotnet8 tool install --global dotnet-outdated-tool
+
+      - name: List installed workloads
+        shell: pwsh
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_8_ROOT }}
+          DOTNET_MULTILEVEL_LOOKUP: 0
+        run: |
+          $dotnet8 = Join-Path $env:DOTNET_8_ROOT "dotnet.exe"
+          & $dotnet8 workload list
+
+      - name: List available workloads
+        shell: pwsh
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_8_ROOT }}
+          DOTNET_MULTILEVEL_LOOKUP: 0
+        run: |
+          $dotnet8 = Join-Path $env:DOTNET_8_ROOT "dotnet.exe"
+          & $dotnet8 workload search
 
       - name: Update NuGet packages
         shell: pwsh
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_8_ROOT }}
+          DOTNET_MULTILEVEL_LOOKUP: 0
         run: |
-          dotnet outdated Launcher_WPF/Launcher_WPF.csproj -u
-          dotnet outdated MeineApp/MeineApp.csproj -u
+          $dotnet8 = Join-Path $env:DOTNET_8_ROOT "dotnet.exe"
+          & $dotnet8 outdated Launcher_WPF/Launcher_WPF.csproj -u -rt win-x64
+          & $dotnet8 outdated MeineApp/MeineApp.csproj -u -rt win-x64
 
       - name: Update target framework to latest .NET LTS
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $ltsMajor = dotnet --list-sdks |
+          $dotnetLts = Join-Path $env:DOTNET_ROOT "dotnet.exe"
+          $ltsMajor = & $dotnetLts --list-sdks |
             ForEach-Object { ($_ -split '\s+')[0] } |
             ForEach-Object { ($_ -split '\.')[0] } |
             Sort-Object {[int]$_} |
@@ -70,15 +108,25 @@ jobs:
           $propsPath = Join-Path $desktopBridgePath "Microsoft.DesktopBridge.props"
 
           if (-not (Test-Path $propsPath)) {
-            Write-Error "DesktopBridge props not found at $propsPath."
-            exit 1
+            Write-Warning "DesktopBridge props not found at $propsPath. Skipping MSIX packaging build."
+            Add-Content -Path $env:GITHUB_ENV -Value "DesktopBridgeAvailable=false"
+            return
           }
 
           Add-Content -Path $env:GITHUB_ENV -Value "WapProjPath=$desktopBridgePath"
+          Add-Content -Path $env:GITHUB_ENV -Value "DesktopBridgeAvailable=true"
 
       - name: Build solution
         shell: pwsh
-        run: dotnet build Launcher.sln -c Release
+        run: |
+          $dotnetLts = Join-Path $env:DOTNET_ROOT "dotnet.exe"
+          if ($env:DesktopBridgeAvailable -eq "true") {
+            & $dotnetLts build Launcher.sln -c Release
+            return
+          }
+
+          & $dotnetLts build Launcher_WPF/Launcher_WPF.csproj -c Release
+          & $dotnetLts build MeineApp/MeineApp.csproj -c Release
 
       - name: Show installed SDK
         shell: pwsh
@@ -87,6 +135,7 @@ jobs:
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.PULL_REQUEST_TOKEN != '' && secrets.PULL_REQUEST_TOKEN || github.token }}
           commit-message: "chore: update nuget packages"
           title: "chore: nightly dependency update"
           body: |
