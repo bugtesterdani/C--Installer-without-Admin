@@ -2,7 +2,7 @@ name: nightly-dependency-update
 
 on:
   schedule:
-    - cron: "50 8 * * *"
+    - cron: "0 10 * * *"
   workflow_dispatch:
 
 permissions:
@@ -16,10 +16,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET (LTS)
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "LTS"
+      - name: Install .NET SDK (LTS)
+        run: |
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
+          chmod +x dotnet-install.sh
+          ./dotnet-install.sh --channel LTS --install-dir "$HOME/.dotnet"
+          echo "$HOME/.dotnet" >> "$GITHUB_PATH"
+          echo "DOTNET_ROOT=$HOME/.dotnet" >> "$GITHUB_ENV"
 
       - name: Install dotnet-outdated-tool
         run: dotnet tool install --global dotnet-outdated-tool
