@@ -11,6 +11,8 @@ permissions:
 jobs:
   update:
     runs-on: windows-latest
+    env:
+      CONFIGURATION: ${{ github.event.inputs.configuration || 'Release' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
