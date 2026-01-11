@@ -2,7 +2,7 @@ name: nightly-dependency-update
 
 on:
   schedule:
-    - cron: "45 8 * * *"
+    - cron: "50 8 * * *"
   workflow_dispatch:
 
 permissions:
