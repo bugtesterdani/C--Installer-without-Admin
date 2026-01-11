@@ -70,15 +70,24 @@ jobs:
           $propsPath = Join-Path $desktopBridgePath "Microsoft.DesktopBridge.props"
 
           if (-not (Test-Path $propsPath)) {
-            Write-Error "DesktopBridge props not found at $propsPath."
-            exit 1
+            Write-Warning "DesktopBridge props not found at $propsPath. Skipping MSIX packaging build."
+            Add-Content -Path $env:GITHUB_ENV -Value "DesktopBridgeAvailable=false"
+            return
           }
 
           Add-Content -Path $env:GITHUB_ENV -Value "WapProjPath=$desktopBridgePath"
+          Add-Content -Path $env:GITHUB_ENV -Value "DesktopBridgeAvailable=true"
 
       - name: Build solution
         shell: pwsh
-        run: dotnet build Launcher.sln -c Release
+        run: |
+          if ($env:DesktopBridgeAvailable -eq "true") {
+            dotnet build Launcher.sln -c Release
+            return
+          }
+
+          dotnet build Launcher_WPF/Launcher_WPF.csproj -c Release
+          dotnet build MeineApp/MeineApp.csproj -c Release
 
       - name: Show installed SDK
         shell: pwsh
