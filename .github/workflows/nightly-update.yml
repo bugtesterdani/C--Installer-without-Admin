@@ -1,0 +1,55 @@
+name: nightly-dependency-update
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET (LTS)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "LTS"
+
+      - name: Install dotnet-outdated-tool
+        run: dotnet tool install --global dotnet-outdated-tool
+
+      - name: Update NuGet packages
+        run: dotnet outdated Launcher.sln -u
+
+      - name: Update target framework to latest .NET LTS
+        run: |
+          LTS_MAJOR=$(dotnet --list-sdks | awk '{print $1}' | cut -d. -f1 | sort -n | tail -1)
+          if [ -z "$LTS_MAJOR" ]; then
+            echo "Could not determine .NET SDK major version."
+            exit 1
+          fi
+          sed -i "s/<TargetFramework>net[0-9]\\+\\.0-windows<\\/TargetFramework>/<TargetFramework>net${LTS_MAJOR}.0-windows<\\/TargetFramework>/g" Launcher_WPF/Launcher_WPF.csproj
+          sed -i "s/<TargetFramework>net[0-9]\\+\\.0-windows<\\/TargetFramework>/<TargetFramework>net${LTS_MAJOR}.0-windows<\\/TargetFramework>/g" MeineApp/MeineApp.csproj
+
+      - name: Build solution
+        run: dotnet build Launcher.sln -c Release
+
+      - name: Show installed SDK
+        run: dotnet --version
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: update nuget packages"
+          title: "chore: nightly dependency update"
+          body: |
+            - Update NuGet packages using dotnet-outdated.
+            - Use the latest .NET LTS SDK during the update run.
+          branch: chore/nightly-dependency-update
+          delete-branch: true
