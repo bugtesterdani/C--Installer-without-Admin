@@ -11,39 +11,61 @@ permissions:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install .NET SDK (LTS)
+        shell: pwsh
         run: |
-          curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
-          chmod +x dotnet-install.sh
-          ./dotnet-install.sh --channel LTS --install-dir "$HOME/.dotnet"
-          echo "$HOME/.dotnet" >> "$GITHUB_PATH"
-          echo "DOTNET_ROOT=$HOME/.dotnet" >> "$GITHUB_ENV"
+          $ErrorActionPreference = 'Stop'
+          $installDir = Join-Path $env:USERPROFILE ".dotnet"
+          Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile dotnet-install.ps1
+          ./dotnet-install.ps1 -Channel LTS -InstallDir $installDir
+          Add-Content -Path $env:GITHUB_PATH -Value $installDir
+          Add-Content -Path $env:GITHUB_ENV -Value "DOTNET_ROOT=$installDir"
 
       - name: Install dotnet-outdated-tool
+        shell: pwsh
         run: dotnet tool install --global dotnet-outdated-tool
 
       - name: Update NuGet packages
+        shell: pwsh
         run: dotnet outdated Launcher.sln -u
 
       - name: Update target framework to latest .NET LTS
+        shell: pwsh
         run: |
-          LTS_MAJOR=$(dotnet --list-sdks | awk '{print $1}' | cut -d. -f1 | sort -n | tail -1)
-          if [ -z "$LTS_MAJOR" ]; then
-            echo "Could not determine .NET SDK major version."
+          $ErrorActionPreference = 'Stop'
+          $ltsMajor = dotnet --list-sdks |
+            ForEach-Object { ($_ -split '\s+')[0] } |
+            ForEach-Object { ($_ -split '\.')[0] } |
+            Sort-Object {[int]$_} |
+            Select-Object -Last 1
+
+          if (-not $ltsMajor) {
+            Write-Error "Could not determine .NET SDK major version."
             exit 1
-          fi
-          sed -i "s/<TargetFramework>net[0-9]\\+\\.0-windows<\\/TargetFramework>/<TargetFramework>net${LTS_MAJOR}.0-windows<\\/TargetFramework>/g" Launcher_WPF/Launcher_WPF.csproj
-          sed -i "s/<TargetFramework>net[0-9]\\+\\.0-windows<\\/TargetFramework>/<TargetFramework>net${LTS_MAJOR}.0-windows<\\/TargetFramework>/g" MeineApp/MeineApp.csproj
+          }
+
+          $replacement = "<TargetFramework>net$ltsMajor.0-windows</TargetFramework>"
+          $projects = @(
+            "Launcher_WPF/Launcher_WPF.csproj",
+            "MeineApp/MeineApp.csproj"
+          )
+
+          foreach ($project in $projects) {
+            (Get-Content $project) -replace "<TargetFramework>net[0-9]+\.0-windows</TargetFramework>", $replacement |
+              Set-Content $project
+          }
 
       - name: Build solution
+        shell: pwsh
         run: dotnet build Launcher.sln -c Release
 
       - name: Show installed SDK
+        shell: pwsh
         run: dotnet --version
 
       - name: Create pull request
