@@ -26,32 +26,33 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $installDir
           Add-Content -Path $env:GITHUB_ENV -Value "DOTNET_ROOT=$installDir"
 
+      - name: Install .NET SDK (8.0)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installDir = Join-Path $env:USERPROFILE ".dotnet8"
+          Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile dotnet-install.ps1
+          ./dotnet-install.ps1 -Channel 8.0 -InstallDir $installDir
+          Add-Content -Path $env:GITHUB_ENV -Value "DOTNET_8_ROOT=$installDir"
+
       - name: Install Windows Desktop workload
         shell: pwsh
         run: |
-          dotnet workload install windowsdesktop
-          if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Windows Desktop workload is not available on this SDK. Skipping dotnet-outdated for WPF projects."
-            Add-Content -Path $env:GITHUB_ENV -Value "WindowsDesktopWorkloadAvailable=false"
-            exit 0
-          }
-
-          Add-Content -Path $env:GITHUB_ENV -Value "WindowsDesktopWorkloadAvailable=true"
+          $dotnet8 = Join-Path $env:DOTNET_8_ROOT "dotnet.exe"
+          & $dotnet8 workload install windowsdesktop
 
       - name: Install dotnet-outdated-tool
         shell: pwsh
-        run: dotnet tool install --global dotnet-outdated-tool
+        run: |
+          $dotnet8 = Join-Path $env:DOTNET_8_ROOT "dotnet.exe"
+          & $dotnet8 tool install --global dotnet-outdated-tool
 
       - name: Update NuGet packages
         shell: pwsh
         run: |
-          if ($env:WindowsDesktopWorkloadAvailable -ne "true") {
-            Write-Warning "Skipping dotnet-outdated because the Windows Desktop workload is unavailable."
-            return
-          }
-
-          dotnet outdated Launcher_WPF/Launcher_WPF.csproj -u
-          dotnet outdated MeineApp/MeineApp.csproj -u
+          $dotnet8 = Join-Path $env:DOTNET_8_ROOT "dotnet.exe"
+          & $dotnet8 outdated Launcher_WPF/Launcher_WPF.csproj -u
+          & $dotnet8 outdated MeineApp/MeineApp.csproj -u
 
       - name: Update target framework to latest .NET LTS
         shell: pwsh
