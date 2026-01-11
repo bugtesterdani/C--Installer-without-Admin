@@ -119,13 +119,14 @@ jobs:
       - name: Build solution
         shell: pwsh
         run: |
+          $dotnetLts = Join-Path $env:DOTNET_ROOT "dotnet.exe"
           if ($env:DesktopBridgeAvailable -eq "true") {
-            dotnet build Launcher.sln -c Release
+            & $dotnetLts build Launcher.sln -c Release
             return
           }
 
-          dotnet build Launcher_WPF/Launcher_WPF.csproj -c Release
-          dotnet build MeineApp/MeineApp.csproj -c Release
+          & $dotnetLts build Launcher_WPF/Launcher_WPF.csproj -c Release
+          & $dotnetLts build MeineApp/MeineApp.csproj -c Release
 
       - name: Show installed SDK
         shell: pwsh
