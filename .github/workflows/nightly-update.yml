@@ -133,6 +133,7 @@ jobs:
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.PULL_REQUEST_TOKEN != '' && secrets.PULL_REQUEST_TOKEN || github.token }}
           commit-message: "chore: update nuget packages"
           title: "chore: nightly dependency update"
           body: |
