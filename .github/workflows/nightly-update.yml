@@ -97,7 +97,8 @@ jobs:
         env:
           DOTNET_MULTILEVEL_LOOKUP: 0
         run: |
-          $dotnetLts = Join-Path $env:DOTNET_ROOT "dotnet.exe"
+          $installDir = Join-Path $env:USERPROFILE ".dotnet"
+          $dotnetLts = Join-Path $installDir "dotnet.exe"
           & $dotnetLts outdated Launcher_WPF/Launcher_WPF.csproj -u -rt win-x64
           & $dotnetLts outdated MeineApp/MeineApp.csproj -u -rt win-x64
 
