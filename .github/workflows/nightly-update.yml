@@ -138,13 +138,20 @@ jobs:
         uses: NuGet/setup-nuget@v2
 
       - name: Restore NuGet packages
-        run: nuget restore Launcher.sln
+        shell: pwsh
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_ROOT }}
+          DOTNET_MULTILEVEL_LOOKUP: 0
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "$($env:DOTNET_ROOT);$env:PATH"
+          nuget restore Launcher.sln
           
       - name: Resolve package version
         id: versioning
         shell: pwsh
         env:
-          VERSION_INPUT: "v1.0.0.0"
+          VERSION_INPUT: "1.0.0.0"
         run: |
           $version = $env:VERSION_INPUT
 
@@ -242,8 +249,11 @@ jobs:
 
       - name: Build MSIX bundle
         shell: pwsh
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_ROOT }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $env:PATH = "$($env:DOTNET_ROOT);$env:PATH"
 
           $packageDir = Join-Path $env:RUNNER_TEMP "msix"
           New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
