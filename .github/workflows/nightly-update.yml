@@ -64,16 +64,6 @@ jobs:
           $dotnet8 = Join-Path $env:DOTNET_8_ROOT "dotnet.exe"
           & $dotnet8 workload search
 
-      - name: Update NuGet packages
-        shell: pwsh
-        env:
-          DOTNET_ROOT: ${{ env.DOTNET_8_ROOT }}
-          DOTNET_MULTILEVEL_LOOKUP: 0
-        run: |
-          $dotnet8 = Join-Path $env:DOTNET_8_ROOT "dotnet.exe"
-          & $dotnet8 outdated Launcher_WPF/Launcher_WPF.csproj -u -rt win-x64
-          & $dotnet8 outdated MeineApp/MeineApp.csproj -u -rt win-x64
-
       - name: Update target framework to latest .NET LTS
         shell: pwsh
         run: |
@@ -100,6 +90,16 @@ jobs:
             (Get-Content $project) -replace "<TargetFramework>net[0-9]+\.0-windows</TargetFramework>", $replacement |
               Set-Content $project
           }
+
+      - name: Update NuGet packages
+        shell: pwsh
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_8_ROOT }}
+          DOTNET_MULTILEVEL_LOOKUP: 0
+        run: |
+          $dotnet = Join-Path $env:DOTNET_ROOT "dotnet.exe"
+          & $dotnet outdated Launcher_WPF/Launcher_WPF.csproj -u -rt win-x64
+          & $dotnet outdated MeineApp/MeineApp.csproj -u -rt win-x64
 
       - name: Configure DesktopBridge path
         shell: pwsh
@@ -137,8 +137,14 @@ jobs:
         uses: NuGet/setup-nuget@v2
 
       - name: Restore NuGet packages
-        run: nuget restore Launcher.sln
-
+        shell: pwsh
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_8_ROOT }}
+          DOTNET_MULTILEVEL_LOOKUP: 0
+        run: |
+          $dotnet = Join-Path $env:DOTNET_ROOT "dotnet.exe"
+          & $dotnet nuget restore Launcher.sln
+          
       - name: Resolve package version
         id: versioning
         shell: pwsh
