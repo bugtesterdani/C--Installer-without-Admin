@@ -65,6 +65,16 @@ jobs:
           $dotnet8 = Join-Path $env:DOTNET_8_ROOT "dotnet.exe"
           & $dotnet8 workload search
 
+      - name: Update NuGet packages
+        shell: pwsh
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_8_ROOT }}
+          DOTNET_MULTILEVEL_LOOKUP: 0
+        run: |
+          $dotnet8 = Join-Path $env:DOTNET_8_ROOT "dotnet.exe"
+          & $dotnet8 outdated Launcher_WPF/Launcher_WPF.csproj -u -rt win-x64
+          & $dotnet8 outdated MeineApp/MeineApp.csproj -u -rt win-x64
+
       - name: Update target framework to latest .NET LTS
         shell: pwsh
         run: |
@@ -91,15 +101,6 @@ jobs:
             (Get-Content $project) -replace "<TargetFramework>net[0-9]+\.0-windows</TargetFramework>", $replacement |
               Set-Content $project
           }
-
-      - name: Update NuGet packages
-        shell: pwsh
-        env:
-          DOTNET_MULTILEVEL_LOOKUP: 0
-        run: |
-          $dotnetLts = Join-Path $env:DOTNET_ROOT "dotnet.exe"
-          & $dotnetLts outdated Launcher_WPF/Launcher_WPF.csproj -u -rt win-x64
-          & $dotnetLts outdated MeineApp/MeineApp.csproj -u -rt win-x64
 
       - name: Configure DesktopBridge path
         shell: pwsh
@@ -139,17 +140,18 @@ jobs:
       - name: Restore NuGet packages
         shell: pwsh
         env:
-          DOTNET_ROOT: ${{ env.DOTNET_8_ROOT }}
+          DOTNET_ROOT: ${{ env.DOTNET_ROOT }}
           DOTNET_MULTILEVEL_LOOKUP: 0
         run: |
-          $dotnet = Join-Path $env:DOTNET_ROOT "dotnet.exe"
-          & $dotnet nuget restore Launcher.sln
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "$($env:DOTNET_ROOT);$env:PATH"
+          nuget restore Launcher.sln
           
       - name: Resolve package version
         id: versioning
         shell: pwsh
         env:
-          VERSION_INPUT: "v1.0.0.0"
+          VERSION_INPUT: "1.0.0.0"
         run: |
           $version = $env:VERSION_INPUT
 
@@ -247,8 +249,11 @@ jobs:
 
       - name: Build MSIX bundle
         shell: pwsh
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_ROOT }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $env:PATH = "$($env:DOTNET_ROOT);$env:PATH"
 
           $packageDir = Join-Path $env:RUNNER_TEMP "msix"
           New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
