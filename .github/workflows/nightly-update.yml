@@ -249,8 +249,11 @@ jobs:
 
       - name: Build MSIX bundle
         shell: pwsh
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_ROOT }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $env:PATH = "$($env:DOTNET_ROOT);$env:PATH"
 
           $packageDir = Join-Path $env:RUNNER_TEMP "msix"
           New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
