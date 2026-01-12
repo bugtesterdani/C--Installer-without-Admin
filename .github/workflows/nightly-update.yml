@@ -138,13 +138,7 @@ jobs:
         uses: NuGet/setup-nuget@v2
 
       - name: Restore NuGet packages
-        shell: pwsh
-        env:
-          DOTNET_MULTILEVEL_LOOKUP: 0
-        run: |
-          $installDir = Join-Path $env:USERPROFILE ".dotnet"
-          $dotnet = Join-Path $installDir "dotnet.exe"
-          & $dotnet nuget restore Launcher.sln
+        run: nuget restore Launcher.sln
           
       - name: Resolve package version
         id: versioning
